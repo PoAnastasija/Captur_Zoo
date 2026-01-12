@@ -9,26 +9,24 @@ import { baseNotifications } from './data/notifications';
 import { photoQuests as basePhotoQuests } from './data/objectives';
 import { Animal, CrowdLevel, PhotoQuest, ZooNotification } from './types/zoo';
 import AnimalModal from '../components/ui/AnimalModal';
-import { Button } from '@/components/ui/button';
 import { BadgePanel } from '@/components/ui/BadgePanel';
 import { NotificationPanel } from '@/components/ui/NotificationPanel';
-import { CrowdPanel } from '@/components/ui/CrowdPanel';
 import { PhotoGallery } from '@/components/ui/PhotoGallery';
 import { CrowdReportPanel } from '@/components/ui/CrowdReportPanel';
 import { PhotoQuestPanel } from '@/components/ui/PhotoQuestPanel';
+import { ShopPanel } from '@/components/ui/ShopPanel';
 import {
   Bell,
   Camera,
+  CalendarDays,
   Cloud,
   CloudLightning,
   CloudRain,
   CloudSun,
-  MapPin,
   Medal,
-  Menu,
-  Sparkles,
+  Navigation2,
+  ShoppingBag,
   Sun,
-  Target,
   Wind,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -62,6 +60,8 @@ type WeatherState =
 
 type PhotoQuestProgress = PhotoQuest & { progress: number; completed: boolean };
 
+type BottomNavAction = 'map' | 'agenda' | 'photos' | 'badges' | 'alerts' | 'shop';
+
 const weatherMetaMap: Record<number, { label: string; icon: LucideIcon; accent: string }> = {
   0: { label: 'Grand soleil', icon: Sun, accent: 'text-amber-600' },
   1: { label: 'Éclaircies', icon: CloudSun, accent: 'text-amber-600' },
@@ -89,23 +89,6 @@ const ZOO_BOUNDS: [[number, number], [number, number]] = [
   [47.7288, 7.3425],
   [47.7349, 7.3528],
 ];
-
-const NEARBY_THRESHOLD_METERS = 130;
-
-const toRad = (value: number) => (value * Math.PI) / 180;
-
-const distanceInMeters = (a: [number, number], b: [number, number]) => {
-  const R = 6371000;
-  const dLat = toRad(b[0] - a[0]);
-  const dLng = toRad(b[1] - a[1]);
-  const lat1 = toRad(a[0]);
-  const lat2 = toRad(b[0]);
-  const sinDLat = Math.sin(dLat / 2);
-  const sinDLng = Math.sin(dLng / 2);
-  const aVal = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
-  const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-  return R * c;
-};
 
 
 const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
@@ -135,13 +118,12 @@ export default function Home() {
   );
   const [userLocated, setUserLocated] = useState(false);
   const [weatherState, setWeatherState] = useState<WeatherState>({ status: 'loading' });
-  const [proximityAlert, setProximityAlert] = useState<{ animalId: string; name: string; zone: string } | null>(null);
-  const [crowdToast, setCrowdToast] = useState<string | null>(null);
+  const [shopPanelOpen, setShopPanelOpen] = useState(false);
+  const [activeNav, setActiveNav] = useState<BottomNavAction>('map');
   const highCrowdZonesRef = useRef<Set<string>>(new Set());
   const lastGeoErrorRef = useRef<string | null>(null);
   const completedQuestsRef = useRef<Set<string>>(new Set());
-  const proximityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const crowdToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const mapSectionRef = useRef<HTMLDivElement | null>(null);
 
   const handleAnimalClick = (animal: Animal) => {
     setSelectedAnimal(animal);
@@ -150,17 +132,6 @@ export default function Home() {
   };
 
   const unreadCount = notifications.filter((notification) => notification.unread).length;
-
-  useEffect(() => {
-    return () => {
-      if (proximityTimeoutRef.current) {
-        clearTimeout(proximityTimeoutRef.current);
-      }
-      if (crowdToastTimeoutRef.current) {
-        clearTimeout(crowdToastTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const unlockBadge = useCallback((badgeId: string) => {
     setBadges((current) =>
@@ -287,41 +258,6 @@ export default function Home() {
     setNotifications((prev) => prev.map((notification) => ({ ...notification, unread: false })));
   };
 
-  const maybeTriggerProximity = useCallback(
-    (coords: [number, number]) => {
-      if (!mapAnimals.length) {
-        return;
-      }
-
-      let nearest: { animal: Animal; distance: number } | null = null;
-      mapAnimals.forEach((animal) => {
-        const distance = distanceInMeters(coords, animal.position);
-        if (!nearest || distance < nearest.distance) {
-          nearest = { animal, distance };
-        }
-      });
-
-      if (nearest && nearest.distance <= NEARBY_THRESHOLD_METERS) {
-        setProximityAlert((prev) => {
-          if (prev?.animalId === nearest!.animal.id) {
-            return prev;
-          }
-          return {
-            animalId: nearest!.animal.id,
-            name: nearest!.animal.name,
-            zone: nearest!.animal.zoneName,
-          };
-        });
-
-        if (proximityTimeoutRef.current) {
-          clearTimeout(proximityTimeoutRef.current);
-        }
-        proximityTimeoutRef.current = setTimeout(() => setProximityAlert(null), 7000);
-      }
-    },
-    [mapAnimals]
-  );
-
   const handleUserLocation = useCallback(
     (coords: [number, number]) => {
       if (!userLocated) {
@@ -332,9 +268,8 @@ export default function Home() {
           type: 'info',
         });
       }
-      maybeTriggerProximity(coords);
     },
-    [addNotification, maybeTriggerProximity, userLocated]
+    [addNotification, userLocated]
   );
 
   const handleGeoError = useCallback(
@@ -410,11 +345,6 @@ export default function Home() {
           type: level === 'high' ? 'alert' : 'info',
         });
         unlockBadge('guardian');
-        setCrowdToast(`Signalement partagé pour ${updatedZone.zoneName}`);
-        if (crowdToastTimeoutRef.current) {
-          clearTimeout(crowdToastTimeoutRef.current);
-        }
-        crowdToastTimeoutRef.current = setTimeout(() => setCrowdToast(null), 4000);
       }
     },
     [addNotification, unlockBadge]
@@ -448,6 +378,17 @@ export default function Home() {
     [addNotification, unlockBadge]
   );
 
+  const closeAllPanels = () => {
+    setBadgePanelOpen(false);
+    setNotificationPanelOpen(false);
+    setPhotoGalleryOpen(false);
+    setCrowdReportOpen(false);
+    setQuestPanelOpen(false);
+    setShopPanelOpen(false);
+  };
+
+  const resetNavToMap = () => setActiveNav('map');
+
   const renderWeatherChip = () => {
     if (weatherState.status === 'loading') {
       return <span className="text-gray-400">Chargement météo...</span>;
@@ -479,71 +420,65 @@ export default function Home() {
 
   const weatherChip = renderWeatherChip();
 
+  const bottomNavItems: Array<{ id: string; label: string; icon: LucideIcon; action: BottomNavAction }> = [
+    { id: 'map', label: 'Carte', icon: Navigation2, action: 'map' },
+    { id: 'agenda', label: 'Agenda', icon: CalendarDays, action: 'agenda' },
+    { id: 'photos', label: 'Photos', icon: Camera, action: 'photos' },
+    { id: 'badges', label: 'Badges', icon: Medal, action: 'badges' },
+    { id: 'alerts', label: 'Actus', icon: Bell, action: 'alerts' },
+    { id: 'shop', label: 'Shop', icon: ShoppingBag, action: 'shop' },
+  ];
+
+  const handleBottomNav = (action: BottomNavAction) => {
+    if (action === 'map') {
+      closeAllPanels();
+      resetNavToMap();
+      mapSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    closeAllPanels();
+    setActiveNav(action);
+
+    switch (action) {
+      case 'agenda':
+        setQuestPanelOpen(true);
+        break;
+      case 'photos':
+        setPhotoGalleryOpen(true);
+        break;
+      case 'badges':
+        setBadgePanelOpen(true);
+        break;
+      case 'alerts':
+        setNotificationPanelOpen(true);
+        break;
+      case 'shop':
+        setShopPanelOpen(true);
+        break;
+      default:
+        break;
+    }
+  };
+
   return (
-    <main className="relative flex min-h-screen w-full flex-col bg-slate-50">
+    <main className="relative flex min-h-screen w-full flex-col overflow-x-hidden bg-slate-50 pb-28">
       {/* Header */}
       <div className="sticky top-0 z-[1100] border-b border-white/70 bg-white/95 shadow-sm backdrop-blur">
         <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-xl font-bold text-gray-900">
-              🦁 Zoo de Mulhouse
-            </h1>
-            <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-3 py-1 text-xs font-medium text-gray-600 shadow-sm">
-              {weatherChip}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="relative"
-              onClick={() => setNotificationPanelOpen(true)}
-              aria-label="Notifications"
-            >
-              <Bell className="h-5 w-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                  {unreadCount}
-                </span>
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setBadgePanelOpen(true)}
-              aria-label="Badges"
-            >
-              <Medal className="h-5 w-5 text-amber-500" />
-            </Button>
-            <Button variant="outline" size="icon" aria-label="Menu">
-              <Menu className="h-5 w-5" />
-            </Button>
+          <h1 className="text-2xl font-bold text-gray-900">🦁 Zoo de Mulhouse</h1>
+          <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm">
+            {weatherChip}
+            {unreadCount > 0 && (
+              <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                +{unreadCount}
+              </span>
+            )}
           </div>
         </div>
       </div>
-
-      {proximityAlert && (
-        <div className="pointer-events-auto absolute left-1/2 top-24 z-[1200] w-[95%] max-w-md -translate-x-1/2 sm:top-28">
-          <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-white/95 p-3 shadow-xl backdrop-blur">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-lg">📍</div>
-            <div className="flex-1 text-sm">
-              <p className="font-semibold text-gray-900">À proximité de {proximityAlert.zone}</p>
-              <p className="text-xs text-gray-600">Passe voir {proximityAlert.name} pour capturer un souvenir.</p>
-            </div>
-            <button
-              type="button"
-              aria-label="Fermer la bulle de proximité"
-              className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-500 hover:bg-gray-200"
-              onClick={() => setProximityAlert(null)}
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Carte */}
-      <div className="relative flex-1">
+      <div ref={mapSectionRef} className="relative flex-1 min-h-[65vh] w-full">
         <ZooMap
           animals={mapAnimals}
           onAnimalClick={handleAnimalClick}
@@ -554,15 +489,6 @@ export default function Home() {
         />
       </div>
 
-      {/* Crowd panel */}
-      <div className="pointer-events-auto fixed right-3 top-[120px] z-[1000] hidden w-72 max-w-[calc(100%-2rem)] lg:block">
-        <CrowdPanel animals={mapAnimals} onRefresh={simulateCrowd} />
-      </div>
-
-      <div className="px-4 pb-24 pt-4 lg:hidden">
-        <CrowdPanel animals={mapAnimals} onRefresh={simulateCrowd} />
-      </div>
-
       {/* Modal */}
       <AnimalModal
         animal={selectedAnimal}
@@ -570,84 +496,21 @@ export default function Home() {
         onClose={() => setIsModalOpen(false)}
       />
 
-      {/* Légende */}
-      <div className="pointer-events-auto absolute bottom-4 left-4 z-[1000] max-w-xs rounded-2xl border border-white/70 bg-white/95 p-3 shadow-lg backdrop-blur">
-        <h3 className="mb-2 text-sm font-semibold">Légende</h3>
-        <div className="flex flex-wrap gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-red-500" />
-            <span>Mammifères</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-blue-500" />
-            <span>Oiseaux</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-green-500" />
-            <span>Reptiles</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-purple-500" />
-            <span>Amphibiens</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Experience shortcuts */}
-      <div className="pointer-events-auto absolute bottom-4 right-4 z-[1000] max-w-[calc(100%-2rem)]">
-        <div className="rounded-2xl border border-gray-100 bg-white/95 p-3 shadow-xl backdrop-blur">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700">
-            <Sparkles className="h-4 w-4 text-amber-500" />
-            Portail Express
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <button
-              className="flex flex-col rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-left text-xs font-semibold text-amber-800 transition hover:border-amber-200"
-              onClick={() => setBadgePanelOpen(true)}
-            >
-              <span className="mb-1 text-base">🏅</span>
-              Badges
-              <span className="text-[10px] font-normal text-amber-700/80">Progression</span>
-            </button>
-            <button
-              className="flex flex-col rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-left text-xs font-semibold text-blue-800 transition hover:border-blue-200"
-              onClick={() => setPhotoGalleryOpen(true)}
-            >
-              <Camera className="mb-1 h-4 w-4" />
-              Photos
-              <span className="text-[10px] font-normal text-blue-700/70">Galerie live</span>
-            </button>
-            <button
-              className="flex flex-col rounded-xl border border-fuchsia-100 bg-fuchsia-50 px-3 py-2 text-left text-xs font-semibold text-fuchsia-800 transition hover:border-fuchsia-200"
-              onClick={() => setQuestPanelOpen(true)}
-            >
-              <Target className="mb-1 h-4 w-4" />
-              Objectifs
-              <span className="text-[10px] font-normal text-fuchsia-700/70">Mode quêtes</span>
-            </button>
-            <button
-              className="flex flex-col rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-left text-xs font-semibold text-emerald-800 transition hover:border-emerald-200"
-              onClick={() => setCrowdReportOpen(true)}
-            >
-              <MapPin className="mb-1 h-4 w-4" />
-              Signaler
-              <span className="text-[10px] font-normal text-emerald-700/70">Mode Waze</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {crowdToast && (
-        <div className="fixed bottom-28 left-1/2 z-[1200] w-[90%] max-w-sm -translate-x-1/2 rounded-full border border-emerald-200 bg-white/95 px-4 py-2 text-center text-xs font-semibold text-emerald-700 shadow-lg">
-          {crowdToast}
-        </div>
-      )}
-
-      <BadgePanel badges={badges} open={badgePanelOpen} onClose={() => setBadgePanelOpen(false)} />
+      <BadgePanel
+        badges={badges}
+        open={badgePanelOpen}
+        onClose={() => {
+          setBadgePanelOpen(false);
+          resetNavToMap();
+        }}
+      />
       <NotificationPanel
         notifications={notifications}
         open={notificationPanelOpen}
-        onClose={() => setNotificationPanelOpen(false)}
+        onClose={() => {
+          setNotificationPanelOpen(false);
+          resetNavToMap();
+        }}
         onMarkAsRead={handleMarkAsRead}
         onMarkAllRead={handleMarkAllRead}
       />
@@ -655,14 +518,20 @@ export default function Home() {
         animals={mapAnimals}
         capturedIds={capturedAnimalIds}
         open={photoGalleryOpen}
-        onClose={() => setPhotoGalleryOpen(false)}
+        onClose={() => {
+          setPhotoGalleryOpen(false);
+          resetNavToMap();
+        }}
         onCapture={handleCaptureAnimal}
         onUploadPhoto={handlePhotoUpload}
       />
       <CrowdReportPanel
         animals={mapAnimals}
         open={crowdReportOpen}
-        onClose={() => setCrowdReportOpen(false)}
+        onClose={() => {
+          setCrowdReportOpen(false);
+          resetNavToMap();
+        }}
         onReport={handleCrowdReport}
       />
       <PhotoQuestPanel
@@ -670,8 +539,51 @@ export default function Home() {
         animals={mapAnimals}
         capturedIds={capturedAnimalIds}
         open={questPanelOpen}
-        onClose={() => setQuestPanelOpen(false)}
+        onClose={() => {
+          setQuestPanelOpen(false);
+          resetNavToMap();
+        }}
       />
+      <ShopPanel
+        open={shopPanelOpen}
+        onClose={() => {
+          setShopPanelOpen(false);
+          resetNavToMap();
+        }}
+        onOpenCrowdReport={() => {
+          setShopPanelOpen(false);
+          setCrowdReportOpen(true);
+          setActiveNav('shop');
+        }}
+        onOpenNotifications={() => {
+          setShopPanelOpen(false);
+          setNotificationPanelOpen(true);
+          setActiveNav('alerts');
+        }}
+      />
+
+      {/* Bottom navigation */}
+      <div className="fixed bottom-4 left-1/2 z-[1200] w-[94%] max-w-2xl -translate-x-1/2 rounded-3xl border border-gray-200 bg-white/95 px-2 py-2 shadow-2xl">
+        <div className="flex items-stretch gap-1 text-[10px] font-semibold">
+          {bottomNavItems.map((item) => {
+            const isActive = activeNav === item.action;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`flex flex-1 flex-col items-center gap-1 rounded-2xl px-2 py-1 text-center transition ${
+                  isActive ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
+                }`}
+                aria-pressed={isActive}
+                onClick={() => handleBottomNav(item.action)}
+              >
+                <item.icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </main>
   );
 }

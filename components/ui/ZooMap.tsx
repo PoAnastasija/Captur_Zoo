@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import L, { LatLngBoundsExpression } from 'leaflet';
 // import 'leaflet/dist/leaflet.css';
@@ -30,22 +30,59 @@ const poiLabels: Record<Poi['category'], string> = {
   other: 'Autres',
 };
 
+const poiGradients: Record<Poi['category'], string> = {
+  animals: 'linear-gradient(135deg, #b45309, #f97316)',
+  plants: 'linear-gradient(135deg, #15803d, #4ade80)',
+  practical: 'linear-gradient(135deg, #1d4ed8, #60a5fa)',
+  other: 'linear-gradient(135deg, #6b7280, #cbd5f5)',
+};
+
+const poiGlyphs: Record<Poi['category'], string> = {
+  animals: '🐾',
+  plants: '🌿',
+  practical: '☕',
+  other: '⭐️',
+};
+
 const createPoiIcon = (category: Poi['category']) =>
   L.divIcon({
     className: 'custom-poi-marker',
     html: `
-      <div style="
-        background-color: ${poiColors[category]};
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        border: 2px solid white;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.35);
-      "></div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;transform:translateY(-4px);">
+        <span style="
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          font-size:14px;
+          color:#fff;
+          width:32px;
+          height:32px;
+          border-radius:9999px 9999px 9999px 0;
+          border:2px solid rgba(255,255,255,0.9);
+          background:${poiGradients[category]};
+          box-shadow:0 6px 12px rgba(0,0,0,0.35);
+          transform:rotate(-15deg);
+        ">${poiGlyphs[category]}</span>
+        <span style="
+          width:6px;
+          height:10px;
+          border-radius:9999px;
+          background:${poiColors[category]};
+          opacity:0.9;
+        "></span>
+      </div>
     `,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
+    iconSize: [30, 40],
+    iconAnchor: [15, 34],
   });
+
+const ZOO_CENTER: [number, number] = [47.7325, 7.3496];
+
+const GEO_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  maximumAge: 5000,
+  timeout: 10000,
+};
 
 const userLocationIcon = L.divIcon({
   className: 'user-location-marker',
@@ -106,53 +143,75 @@ export default function ZooMap({
   const [geoError, setGeoError] = useState<string | null>(
     () => (isGeoSupported ? null : GEO_UNSUPPORTED_MESSAGE)
   );
-  const [hasCenteredUser, setHasCenteredUser] = useState(false);
   const mapRef = useRef<L.Map | null>(null);
+  const hasCenteredUserRef = useRef(false);
   const mapBounds = useMemo(() => bounds ?? defaultBounds, [bounds]);
+  const handlePositionSuccess = useCallback(
+    (position: GeolocationPosition) => {
+      const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
+      setUserPosition(coords);
+      setUserAccuracy(position.coords.accuracy);
+      setGeoError(null);
+      onUserLocation?.(coords);
+      if (!hasCenteredUserRef.current && mapRef.current) {
+        mapRef.current.flyTo(coords, 17, { duration: 1.2 });
+        hasCenteredUserRef.current = true;
+      }
+    },
+    [onUserLocation]
+  );
+
+  const handlePositionError = useCallback(
+    (error: GeolocationPositionError) => {
+      console.error('Geolocation error:', error);
+      let message = 'Impossible de récupérer votre position.';
+      if (error.code === 1) {
+        message = 'Autorise la localisation pour débloquer les alertes de proximité.';
+      } else if (error.code === 2) {
+        message = 'Position temporairement indisponible.';
+      } else if (error.code === 3) {
+        message = 'La recherche de position a expiré, réessaie.';
+      }
+      setGeoError(message);
+      onGeoError?.(message);
+    },
+    [onGeoError]
+  );
+
+  const requestManualLocation = useCallback(() => {
+    if (!isGeoSupported || typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGeoError(GEO_UNSUPPORTED_MESSAGE);
+      onGeoError?.(GEO_UNSUPPORTED_MESSAGE);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(handlePositionSuccess, handlePositionError, GEO_OPTIONS);
+  }, [handlePositionError, handlePositionSuccess, isGeoSupported, onGeoError]);
 
   useEffect(() => {
     if (!isGeoSupported) {
       onGeoError?.(GEO_UNSUPPORTED_MESSAGE);
+    }
+  }, [isGeoSupported, onGeoError]);
+
+  useEffect(() => {
+    if (!isGeoSupported || typeof navigator === 'undefined' || !navigator.geolocation) {
       return;
     }
 
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      return;
-    }
-
+    navigator.geolocation.getCurrentPosition(handlePositionSuccess, handlePositionError, GEO_OPTIONS);
     const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
-        setUserPosition(coords);
-        setUserAccuracy(position.coords.accuracy);
-        setGeoError(null);
-        onUserLocation?.(coords);
-
-        if (!hasCenteredUser && mapRef.current) {
-          mapRef.current.flyTo(coords, 17, { duration: 1.2 });
-          setHasCenteredUser(true);
-        }
-      },
-      (error) => {
-        console.error('Geolocation error:', error);
-        const message = 'Impossible de récupérer votre position.';
-        setGeoError(message);
-        onGeoError?.(message);
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 5000,
-        timeout: 10000,
-      }
+      handlePositionSuccess,
+      handlePositionError,
+      GEO_OPTIONS
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [hasCenteredUser, isGeoSupported, onGeoError, onUserLocation]);
+  }, [handlePositionError, handlePositionSuccess, isGeoSupported]);
 
   return (
     <div className="relative h-full w-full">
       <MapContainer
-        center={[47.7315751, 7.347215]}
+        center={ZOO_CENTER}
         zoom={16}
         minZoom={15}
         maxZoom={19}
@@ -165,7 +224,7 @@ export default function ZooMap({
         inertia
         inertiaDeceleration={3000}
         className="w-full"
-        style={{ minHeight: '65vh', height: '100%' }}
+        style={{ minHeight: '70vh', height: '100%' }}
         zoomControl
         maxBounds={mapBounds}
         maxBoundsViscosity={0.35}
@@ -246,13 +305,20 @@ export default function ZooMap({
       </MapContainer>
 
       {geoError && (
-        <div className="absolute bottom-4 right-4 z-[1000] rounded-md bg-white/90 px-3 py-2 text-xs font-medium text-red-600 shadow">
+        <div className="absolute bottom-4 right-4 z-[1000] max-w-xs rounded-md bg-white/90 px-3 py-2 text-xs font-medium text-red-600 shadow">
           {geoError}
         </div>
       )}
       {!geoError && !userPosition && (
-        <div className="absolute bottom-4 right-4 z-[1000] rounded-md bg-white/90 px-3 py-2 text-xs font-medium text-gray-700 shadow">
-          Activation de la localisation...
+        <div className="absolute bottom-4 left-4 z-[1000] max-w-xs rounded-xl bg-white/95 p-3 text-xs text-gray-700 shadow">
+          <p className="mb-2 font-semibold text-gray-900">Active ta localisation pour les alertes météo & proximité.</p>
+          <button
+            type="button"
+            className="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow hover:bg-blue-500"
+            onClick={requestManualLocation}
+          >
+            Demander l&rsquo;accès
+          </button>
         </div>
       )}
     </div>
