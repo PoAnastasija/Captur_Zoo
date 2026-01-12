@@ -1,9 +1,9 @@
 'use client';
 
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
 import { Poi } from '@/types/zoo';
 import { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
 
 // Fix pour les icônes Leaflet avec Next.js
 delete (L.Icon.Default.prototype as any)._getIconUrl;
