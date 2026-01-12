@@ -29,6 +29,15 @@ export const baseBadges: BadgeReward[] = [
     icon: '📸',
   },
   {
+    id: 'shutterbug',
+    title: 'Photographe Safari',
+    description: 'Capture des clichés pour compléter les quêtes photo.',
+    requirement: 'Terminer une quête photo',
+    unlocked: false,
+    progress: 0,
+    icon: '📷',
+  },
+  {
     id: 'insider',
     title: 'VIP du Zoo',
     description: 'Reste informé de tous les événements clés du zoo.',

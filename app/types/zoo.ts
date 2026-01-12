@@ -28,9 +28,6 @@ export interface Poi {
   description?: string;
   imageUrl?: string | null;
   linkUrl?: string | null;
-  type: 'enclosure' | 'facility' | 'rest-area';
-  position: [number, number];
-  icon: string;
 }
 
 export interface BadgeReward {
@@ -50,4 +47,13 @@ export interface ZooNotification {
   type: 'event' | 'alert' | 'info';
   timestamp: string;
   unread: boolean;
+}
+
+export interface PhotoQuest {
+  id: string;
+  title: string;
+  description: string;
+  targets: string[];
+  reward: string;
+  icon: string;
 }
