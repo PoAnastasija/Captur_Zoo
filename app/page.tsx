@@ -1,16 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import { animals } from './data/animals';
-// import { Animal } from '@/types/zoo';
-import { Animal } from './types/zoo';
-import AnimalModal from '../components/ui/AnimalModal';
+import { pois } from '@/app/data/pois';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 
-
-const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
+const ZooMap = dynamic(() => import('@/components/ui/ZooMap'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-screen flex items-center justify-center bg-gray-100">
@@ -20,14 +15,6 @@ const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
 });
 
 export default function Home() {
-  const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const handleAnimalClick = (animal: Animal) => {
-    setSelectedAnimal(animal);
-    setIsModalOpen(true);
-  };
-
   return (
     <main className="relative w-full h-screen">
       {/* Header */}
@@ -41,38 +28,30 @@ export default function Home() {
           </Button>
         </div>
       </div>
-
       {/* Carte */}
       <div className="pt-16">
-        <ZooMap animals={animals} onAnimalClick={handleAnimalClick} />
+        <ZooMap pois={pois} />
       </div>
 
-      {/* Modal */}
-      <AnimalModal
-        animal={selectedAnimal}
-        open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
-
       {/* Légende */}
-      <div className="absolute bottom-4 left-4 z-[1000] bg-white p-4 rounded-lg shadow-lg">
-        <h3 className="font-semibold mb-2 text-sm">Légende</h3>
-        <div className="space-y-1 text-xs">
+      <div className="absolute bottom-4 left-4 z-[1000] bg-white p-4 rounded-lg shadow-lg text-xs space-y-3">
+        <h3 className="font-semibold mb-2 text-sm">Points d'intérêt</h3>
+        <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <span>Mammifères</span>
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#b45309' }}></div>
+            <span>Zonages animaux</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-            <span>Oiseaux</span>
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#15803d' }}></div>
+            <span>Plantes & jardins</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-green-500"></div>
-            <span>Reptiles</span>
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#1d4ed8' }}></div>
+            <span>Services & pratique</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-            <span>Amphibiens</span>
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6b7280' }}></div>
+            <span>Autres</span>
           </div>
         </div>
       </div>

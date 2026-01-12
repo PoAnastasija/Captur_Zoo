@@ -1,20 +1,13 @@
-export interface Animal {
-  id: string;
-  name: string;
-  species: string;
-  category: 'mammal' | 'bird' | 'reptile' | 'amphibian';
-  position: [number, number]; // [lat, lng]
-  image: string;
-  description: string;
-  funFact: string;
-  conservationStatus: 'LC' | 'NT' | 'VU' | 'EN' | 'CR';
-  feedingTimes?: string[];
-}
+export type PoiCategory = 'animals' | 'plants' | 'practical' | 'other';
 
-export interface Zone {
+export interface Poi {
   id: string;
   name: string;
-  type: 'enclosure' | 'facility' | 'rest-area';
-  position: [number, number];
-  icon: string;
+  latitude: number;
+  longitude: number;
+  tags: string[];
+  category: PoiCategory;
+  description?: string;
+  imageUrl?: string | null;
+  linkUrl?: string | null;
 }

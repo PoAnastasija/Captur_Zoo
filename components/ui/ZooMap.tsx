@@ -1,9 +1,8 @@
 'use client';
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-// import 'leaflet/dist/leaflet.css';
-import { Animal } from '@/types/zoo';
+import { Poi } from '@/types/zoo';
 import { useEffect, useState } from 'react';
 
 // Fix pour les icônes Leaflet avec Next.js
@@ -14,39 +13,42 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Icônes personnalisées par catégorie
-const createCustomIcon = (category: Animal['category']) => {
-  const colors = {
-    mammal: '#ef4444',
-    bird: '#3b82f6',
-    reptile: '#10b981',
-    amphibian: '#8b5cf6'
-  };
-
-  return L.divIcon({
-    className: 'custom-marker',
-    html: `
-      <div style="
-        background-color: ${colors[category]};
-        width: 30px;
-        height: 30px;
-        border-radius: 50% 50% 50% 0;
-        transform: rotate(-45deg);
-        border: 3px solid white;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-      "></div>
-    `,
-    iconSize: [30, 30],
-    iconAnchor: [15, 30],
-  });
+const poiColors: Record<Poi['category'], string> = {
+  animals: '#b45309',
+  plants: '#15803d',
+  practical: '#1d4ed8',
+  other: '#6b7280'
 };
 
+const poiLabels: Record<Poi['category'], string> = {
+  animals: 'Animaux',
+  plants: 'Plantes & jardins',
+  practical: 'Services',
+  other: 'Autres'
+};
+
+const createPoiIcon = (category: Poi['category']) =>
+  L.divIcon({
+    className: 'custom-poi-marker',
+    html: `
+      <div style="
+        background-color: ${poiColors[category]};
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+      "></div>
+    `,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+
 interface ZooMapProps {
-  animals: Animal[];
-  onAnimalClick: (animal: Animal) => void;
+  pois: Poi[];
 }
 
-export default function ZooMap({ animals, onAnimalClick }: ZooMapProps) {
+export default function ZooMap({ pois }: ZooMapProps) {
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export default function ZooMap({ animals, onAnimalClick }: ZooMapProps) {
 
   return (
     <MapContainer
-      center={[47.7315751, 7.347215]} // Centre du Zoo de Mulhouse
+      center={[47.7349, 7.3498]} // Centre ajusté sur les POI fournis
       zoom={16}
       className="w-full h-screen"
       zoomControl={true}
@@ -72,20 +74,48 @@ export default function ZooMap({ animals, onAnimalClick }: ZooMapProps) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      
-      {animals.map((animal) => (
+
+      {pois.map((poi) => (
         <Marker
-          key={animal.id}
-          position={animal.position}
-          icon={createCustomIcon(animal.category)}
-          eventHandlers={{
-            click: () => onAnimalClick(animal),
-          }}
+          key={`poi-${poi.id}`}
+          position={[poi.latitude, poi.longitude]}
+          icon={createPoiIcon(poi.category)}
         >
           <Popup>
-            <div className="text-center">
-              <h3 className="font-bold">{animal.name}</h3>
-              <p className="text-sm text-gray-600">{animal.species}</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-gray-900">{poi.name}</h3>
+                <span
+                  className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full text-white"
+                  style={{ backgroundColor: poiColors[poi.category] }}
+                >
+                  {poiLabels[poi.category]}
+                </span>
+              </div>
+              {poi.imageUrl && (
+                <img
+                  src={poi.imageUrl}
+                  alt={poi.name}
+                  className="w-full h-32 object-cover rounded-md"
+                  loading="lazy"
+                />
+              )}
+              {poi.description && (
+                <div
+                  className="text-xs text-gray-600 space-y-2"
+                  dangerouslySetInnerHTML={{ __html: poi.description }}
+                />
+              )}
+              {poi.linkUrl && (
+                <a
+                  href={poi.linkUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:underline"
+                >
+                  Plus d'informations ↗
+                </a>
+              )}
             </div>
           </Popup>
         </Marker>
