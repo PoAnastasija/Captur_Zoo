@@ -48,71 +48,71 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #f6f0e4;
+  --foreground: #1f2a24;
+  --card: #fffdf6;
+  --card-foreground: #1c2822;
+  --popover: #fffdf6;
+  --popover-foreground: #1c2822;
+  --primary: #0d4f4a;
+  --primary-foreground: #fefcf7;
+  --secondary: #fceec2;
+  --secondary-foreground: #2e2010;
+  --muted: #efe2ca;
+  --muted-foreground: #6c6657;
+  --accent: #7fba39;
+  --accent-foreground: #0f2b1a;
+  --destructive: #c4473d;
+  --border: #e5dcc7;
+  --input: #e5dcc7;
+  --ring: #0d4f4a;
+  --chart-1: #0d4f4a;
+  --chart-2: #f79f1a;
+  --chart-3: #7fba39;
+  --chart-4: #f05d23;
+  --chart-5: #3c8f7c;
+  --sidebar: #fff9ed;
+  --sidebar-foreground: #1f2a24;
+  --sidebar-primary: #0d4f4a;
+  --sidebar-primary-foreground: #fefcf7;
+  --sidebar-accent: #fceec2;
+  --sidebar-accent-foreground: #1f2a24;
+  --sidebar-border: #e5dcc7;
+  --sidebar-ring: #0d4f4a;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #081714;
+  --foreground: #f2f0ea;
+  --card: #102521;
+  --card-foreground: #f2f0ea;
+  --popover: #102521;
+  --popover-foreground: #f2f0ea;
+  --primary: #7fba39;
+  --primary-foreground: #081714;
+  --secondary: #1f342e;
+  --secondary-foreground: #f4f2eb;
+  --muted: #1b2a25;
+  --muted-foreground: #94a39b;
+  --accent: #f79f1a;
+  --accent-foreground: #081714;
+  --destructive: #f68974;
+  --border: #1f342e;
+  --input: #1f342e;
+  --ring: #7fba39;
+  --chart-1: #7fba39;
+  --chart-2: #fcd77b;
+  --chart-3: #3c8f7c;
+  --chart-4: #f05d23;
+  --chart-5: #0f8fa3;
+  --sidebar: #102521;
+  --sidebar-foreground: #f2f0ea;
+  --sidebar-primary: #7fba39;
+  --sidebar-primary-foreground: #081714;
+  --sidebar-accent: #1f342e;
+  --sidebar-accent-foreground: #f2f0ea;
+  --sidebar-border: #1f342e;
+  --sidebar-ring: #7fba39;
 }
 
 @layer base {
@@ -121,6 +121,18 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.65) 0%, transparent 45%),
+      radial-gradient(circle at 90% 0%, rgba(255, 255, 255, 0.5) 0%, transparent 35%),
+      radial-gradient(circle at 15% 80%, rgba(255, 231, 189, 0.4) 0%, transparent 45%),
+      linear-gradient(180deg, #f9f4e8 0%, #f2e3cc 65%, #e3d3bf 100%);
+    background-attachment: fixed;
+  }
+  .leaflet-container {
+    border: none !important;
+    outline: none;
+    box-shadow: none;
+    background: transparent !important;
   }
 }
 

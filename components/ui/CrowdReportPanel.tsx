@@ -70,7 +70,7 @@ export function CrowdReportPanel({ animals, open, onClose, onReport }: CrowdRepo
         showCloseButton={false}
         className="inset-0 left-0 top-0 h-full max-w-none translate-x-0 translate-y-0 rounded-none border-none bg-white p-0"
       >
-        <div className="flex h-full flex-col">
+        <div className="flex h-full min-h-0 flex-col">
           <div className="flex items-center justify-between border-b px-6 py-4">
             <div>
               <DialogTitle className="text-2xl font-bold">Signaler l&rsquo;affluence</DialogTitle>
@@ -87,7 +87,7 @@ export function CrowdReportPanel({ animals, open, onClose, onReport }: CrowdRepo
               </button>
             </DialogClose>
           </div>
-          <div className="flex-1 overflow-y-auto px-6 py-6">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700" htmlFor="zone-select">

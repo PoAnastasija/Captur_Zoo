@@ -63,3 +63,15 @@ export interface PhotoQuest {
   reward: string;
   icon: string;
 }
+
+export interface CrowdReportEntry {
+  id: string;
+  animalId: string;
+  animalName: string;
+  zoneName: string;
+  level: CrowdLevel;
+  visitorCount: number;
+  comment?: string;
+  timestamp: string;
+  contributor: string;
+}

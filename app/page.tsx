@@ -7,7 +7,7 @@ import { baseBadges } from './data/badges';
 import { pois } from './data/pois';
 import { baseNotifications } from './data/notifications';
 import { photoQuests as basePhotoQuests } from './data/objectives';
-import { Animal, BadgeReward, CrowdLevel, PhotoQuest, ZooNotification } from './types/zoo';
+import { Animal, BadgeReward, CrowdLevel, CrowdReportEntry, PhotoQuest, ZooNotification } from './types/zoo';
 import AnimalModal from '../components/ui/AnimalModal';
 import { BadgePanel } from '@/components/ui/BadgePanel';
 import { NotificationPanel } from '@/components/ui/NotificationPanel';
@@ -93,6 +93,8 @@ const ZOO_BOUNDS: [[number, number], [number, number]] = [
 const EARTH_RADIUS_METERS = 6371000;
 const DEFAULT_PROXIMITY_RADIUS = 180;
 
+const CROWD_STORAGE_KEY = 'captur_zoo_crowd_reports';
+
 const toRadians = (value: number) => (value * Math.PI) / 180;
 
 const getDistanceMeters = (a: [number, number], b: [number, number]) => {
@@ -106,6 +108,23 @@ const getDistanceMeters = (a: [number, number], b: [number, number]) => {
   const c = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
   return EARTH_RADIUS_METERS * c;
 };
+
+type OutgoingRealtimeMessage =
+  | {
+      type: 'crowd-report';
+      payload: {
+        report: CrowdReportEntry;
+        animalId: string;
+        level: CrowdLevel;
+        visitorCount: number;
+      };
+    }
+  | {
+      type: 'notification';
+      payload: ZooNotification;
+    };
+
+type RealtimeMessage = OutgoingRealtimeMessage & { source: string };
 
 
 const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
@@ -128,6 +147,7 @@ export default function Home() {
   const [questPanelOpen, setQuestPanelOpen] = useState(false);
   const [badges, setBadges] = useState(baseBadges);
   const [notifications, setNotifications] = useState<ZooNotification[]>(baseNotifications);
+  const [crowdReports, setCrowdReports] = useState<CrowdReportEntry[]>([]);
   const [visitedAnimalIds, setVisitedAnimalIds] = useState<string[]>([]);
   const [capturedAnimalIds, setCapturedAnimalIds] = useState<string[]>([]);
   const [photoQuests, setPhotoQuests] = useState<PhotoQuestProgress[]>(() =>
@@ -145,12 +165,36 @@ export default function Home() {
   const completedQuestsRef = useRef<Set<string>>(new Set());
   const deliveredProximityRef = useRef<Set<string>>(new Set());
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
+  const realtimeChannelRef = useRef<BroadcastChannel | null>(null);
+  const clientIdRef = useRef<string>(`client-${Math.random().toString(36).slice(2)}`);
 
   const handleAnimalClick = (animal: Animal) => {
     setSelectedAnimal(animal);
     setIsModalOpen(true);
     setVisitedAnimalIds((prev) => (prev.includes(animal.id) ? prev : [...prev, animal.id]));
   };
+
+  const persistCrowdReports = useCallback((nextReports: CrowdReportEntry[]) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(CROWD_STORAGE_KEY, JSON.stringify(nextReports));
+    } catch (error) {
+      console.warn('Impossible de persister les signalements', error);
+    }
+  }, []);
+
+  const sendRealtimeMessage = useCallback(
+    (message: OutgoingRealtimeMessage) => {
+      const channel = realtimeChannelRef.current;
+      if (!channel) {
+        return;
+      }
+      channel.postMessage({ ...message, source: clientIdRef.current } as RealtimeMessage);
+    },
+    []
+  );
 
   const unreadCount = notifications.filter((notification) => notification.unread).length;
 
@@ -178,17 +222,21 @@ export default function Home() {
     }
   }, []);
 
-  const addNotification = useCallback((payload: Omit<ZooNotification, 'id' | 'timestamp' | 'unread'>) => {
-    setNotifications((prev) => [
-      {
+  const addNotification = useCallback(
+    (payload: Omit<ZooNotification, 'id' | 'timestamp' | 'unread'>, options?: { broadcast?: boolean }) => {
+      const nextNotification: ZooNotification = {
         id: `notif-${Date.now()}`,
         unread: true,
         timestamp: new Date().toISOString(),
         ...payload,
-      },
-      ...prev,
-    ]);
-  }, []);
+      };
+      setNotifications((prev) => [nextNotification, ...prev]);
+      if (options?.broadcast) {
+        sendRealtimeMessage({ type: 'notification', payload: nextNotification });
+      }
+    },
+    [sendRealtimeMessage]
+  );
 
   const computeCrowdLevel = (count: number, capacity: number) => {
     const ratio = count / capacity;
@@ -238,10 +286,98 @@ export default function Home() {
   }, [simulateCrowd]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const stored = window.localStorage.getItem(CROWD_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as CrowdReportEntry[];
+        if (Array.isArray(parsed)) {
+          setCrowdReports(parsed);
+        }
+      }
+    } catch (error) {
+      console.warn('Impossible de charger les signalements sauvegardés', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    persistCrowdReports(crowdReports);
+  }, [crowdReports, persistCrowdReports]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== CROWD_STORAGE_KEY || !event.newValue) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(event.newValue) as CrowdReportEntry[];
+        if (Array.isArray(parsed)) {
+          setCrowdReports(parsed);
+        }
+      } catch (error) {
+        console.error('Erreur lors de la synchronisation des signalements', error);
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  useEffect(() => {
     if (visitedAnimalIds.length >= 3) {
       unlockBadge('collector');
     }
   }, [visitedAnimalIds, unlockBadge]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) {
+      return;
+    }
+    const channel = new window.BroadcastChannel('captur-zoo-live');
+    realtimeChannelRef.current = channel;
+
+    channel.onmessage = (event: MessageEvent<RealtimeMessage>) => {
+      const message = event.data;
+      if (!message || message.source === clientIdRef.current) {
+        return;
+      }
+      if (message.type === 'crowd-report') {
+        setCrowdReports((prev) => {
+          if (prev.some((entry) => entry.id === message.payload.report.id)) {
+            return prev;
+          }
+          const next = [message.payload.report, ...prev];
+          return next.slice(0, 50);
+        });
+        setMapAnimals((prev) =>
+          prev.map((animal) =>
+            animal.id === message.payload.animalId
+              ? {
+                  ...animal,
+                  crowdLevel: message.payload.level,
+                  visitorCount: message.payload.visitorCount,
+                }
+              : animal
+          )
+        );
+      } else if (message.type === 'notification') {
+        setNotifications((prev) => {
+          if (prev.some((notif) => notif.id === message.payload.id)) {
+            return prev;
+          }
+          return [message.payload, ...prev];
+        });
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, []);
 
   useEffect(() => {
     const readCount = notifications.filter((notification) => !notification.unread).length;
@@ -435,18 +571,46 @@ export default function Home() {
           if (animal.id !== animalId) {
             return animal;
           }
+          const visitorCount = Math.round(animal.capacity * levelRatio[level]);
           const updated = {
             ...animal,
             crowdLevel: level,
-            visitorCount: Math.round(animal.capacity * levelRatio[level]),
+            visitorCount,
           };
           updatedZone = updated;
           return updated;
         })
       );
 
-      if (updatedZone) {
-        addNotification({
+      if (!updatedZone) {
+        return;
+      }
+
+      const reportEntry: CrowdReportEntry = {
+        id: `report-${Date.now()}`,
+        animalId: updatedZone.id,
+        animalName: updatedZone.name,
+        zoneName: updatedZone.zoneName,
+        level,
+        visitorCount: updatedZone.visitorCount,
+        comment: comment || undefined,
+        timestamp: new Date().toISOString(),
+        contributor: 'Visiteur anonyme',
+      };
+
+      setCrowdReports((prev) => [reportEntry, ...prev].slice(0, 50));
+      sendRealtimeMessage({
+        type: 'crowd-report',
+        payload: {
+          report: reportEntry,
+          animalId: updatedZone.id,
+          level,
+          visitorCount: updatedZone.visitorCount,
+        },
+      });
+
+      addNotification(
+        {
           title: `Signalement ${levelLabels[level]} - ${updatedZone.zoneName}`,
           body: `${comment ? `${comment} · ` : ''}Affluence estimée à ${updatedZone.visitorCount}/${updatedZone.capacity} visiteurs.`,
           type: level === 'high' ? 'alert' : 'info',
@@ -454,11 +618,12 @@ export default function Home() {
             coords: updatedZone.position,
             radiusMeters: DEFAULT_PROXIMITY_RADIUS,
           },
-        });
-        unlockBadge('guardian');
-      }
+        },
+        { broadcast: true }
+      );
+      unlockBadge('guardian');
     },
-    [addNotification, unlockBadge]
+    [addNotification, sendRealtimeMessage, unlockBadge]
   );
 
   const handleCaptureAnimal = (animalId: string) => {
@@ -555,10 +720,10 @@ export default function Home() {
 
   const renderWeatherChip = () => {
     if (weatherState.status === 'loading') {
-      return <span className="text-gray-400">Chargement météo...</span>;
+      return <span className="text-white/70">Chargement météo...</span>;
     }
     if (weatherState.status === 'error') {
-      return <span className="text-red-500">Météo indisponible</span>;
+      return <span className="text-[#ffd0c3]">Météo indisponible</span>;
     }
     const meta = getWeatherMeta(weatherState.data.weathercode);
     const WeatherIcon = meta.icon;
@@ -569,15 +734,15 @@ export default function Home() {
     return (
       <>
         <WeatherIcon className={`h-4 w-4 ${meta.accent}`} />
-        <span className="font-semibold text-gray-900">
+        <span className="font-semibold text-[#102923]">
           {Math.round(weatherState.data.temperature)}°C
         </span>
-        <span className="hidden text-gray-500 sm:inline">{meta.label}</span>
-        <span className="flex items-center gap-1 text-[11px] text-gray-500">
+        <span className="hidden text-[#4c5a53] sm:inline">{meta.label}</span>
+        <span className="flex items-center gap-1 text-[11px] text-[#4c5a53]">
           <Wind className="h-3 w-3" />
           {Math.round(weatherState.data.windspeed)} km/h
         </span>
-        <span className="text-[10px] text-gray-400">MAJ {formattedTime}</span>
+        <span className="text-[10px] text-[#8c9187]">MAJ {formattedTime}</span>
       </>
     );
   };
@@ -626,16 +791,16 @@ export default function Home() {
   };
 
   return (
-    <main className="relative flex min-h-screen w-full flex-col overflow-x-hidden bg-slate-50 pb-0">
+    <main className="relative flex min-h-screen w-full flex-col overflow-x-hidden pb-28">
       {/* Header */}
-      <div className="sticky top-0 z-[1100] border-b border-white/70 bg-white/95 shadow-sm backdrop-blur">
+      <div className="sticky top-0 z-[1100] border-b border-white/10 bg-gradient-to-r from-[#0d4f4a]/95 via-[#0e5d54]/95 to-[#127c63]/95 text-white shadow-lg backdrop-blur">
         <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">🦁 Zoo de Mulhouse</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow">🦁 Zoo de Mulhouse</h1>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/90 px-4 py-1.5 text-xs font-medium text-[#1f2c27] shadow-md">
               {weatherChip}
               {unreadCount > 0 && (
-                <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                <span className="rounded-full bg-[#c4473d] px-2 py-0.5 text-[10px] font-semibold text-white">
                   +{unreadCount}
                 </span>
               )}
@@ -645,10 +810,10 @@ export default function Home() {
               aria-pressed={proximityAlertsEnabled && notificationPermission === 'granted'}
               disabled={proximityAlertsEnabled && notificationPermission === 'granted'}
               onClick={handleEnableProximityAlerts}
-              className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-1.5 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 ${
+              className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-1.5 text-xs font-semibold tracking-wide transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#fdd27c] ${
                 proximityAlertsEnabled && notificationPermission === 'granted'
-                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                  ? 'border-transparent bg-[#7fba39] text-[#0b2a1a] shadow-lg shadow-[#0b2a1a]/30'
+                  : 'border-white/40 text-white/90 hover:bg-white/10'
               }`}
             >
               <Smartphone className="h-4 w-4" />
@@ -660,15 +825,20 @@ export default function Home() {
         </div>
       </div>
       {/* Carte */}
-      <div ref={mapSectionRef} className="relative flex-1 w-full min-h-[calc(100vh-140px)]">
-        <ZooMap
-          animals={mapAnimals}
-          onAnimalClick={handleAnimalClick}
-          onUserLocation={handleUserLocation}
-          onGeoError={handleGeoError}
-          bounds={ZOO_BOUNDS}
-          pois={pois}
-        />
+      <div
+        ref={mapSectionRef}
+        className="relative flex-1 w-full min-h-[calc(100vh-140px)] pb-10"
+      >
+        <div className="h-full w-full">
+          <ZooMap
+            animals={mapAnimals}
+            onAnimalClick={handleAnimalClick}
+            onUserLocation={handleUserLocation}
+            onGeoError={handleGeoError}
+            bounds={ZOO_BOUNDS}
+            pois={pois}
+          />
+        </div>
       </div>
 
       {/* Modal */}
@@ -689,6 +859,7 @@ export default function Home() {
       />
       <NotificationPanel
         notifications={notifications}
+        crowdReports={crowdReports}
         open={notificationPanelOpen}
         onClose={() => {
           setNotificationPanelOpen(false);
@@ -730,21 +901,21 @@ export default function Home() {
 
       {badgeToast && (
         <div className="pointer-events-none fixed inset-x-0 top-28 z-[1500] flex justify-center px-4">
-          <div className="badge-pop w-full max-w-sm rounded-3xl border border-emerald-200 bg-white/95 p-5 text-center shadow-2xl">
+          <div className="badge-pop w-full max-w-sm rounded-3xl border border-[#f4d9a7] bg-[#fff9f0]/95 p-5 text-center shadow-2xl">
             <div className="mb-3 text-5xl" aria-hidden>
               {badgeToast.icon}
             </div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-emerald-600">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#7fba39]">
               Badge débloqué
             </p>
-            <p className="text-xl font-bold text-gray-900">{badgeToast.title}</p>
-            <p className="text-sm text-gray-500">{badgeToast.description}</p>
+            <p className="text-xl font-bold text-[#1c2822]">{badgeToast.title}</p>
+            <p className="text-sm text-[#5b564a]">{badgeToast.description}</p>
           </div>
         </div>
       )}
 
       {/* Bottom navigation */}
-      <div className="fixed bottom-4 left-1/2 z-[1200] w-[94%] max-w-2xl -translate-x-1/2 rounded-3xl border border-gray-200 bg-white/95 px-2 py-2 shadow-2xl">
+      <div className="fixed bottom-4 left-1/2 z-[1200] w-[94%] max-w-2xl -translate-x-1/2 rounded-3xl border border-[#f4dcb2] bg-gradient-to-r from-[#fff8ec]/95 via-[#fef1d6]/95 to-[#ffe8bd]/95 px-3 py-2 shadow-[0_20px_45px_rgba(13,79,74,0.25)] backdrop-blur">
         <div className="flex items-stretch gap-1 text-[10px] font-semibold">
           {bottomNavItems.map((item) => {
             const isActive = activeNav === item.action;
@@ -753,7 +924,9 @@ export default function Home() {
                 key={item.id}
                 type="button"
                 className={`flex flex-1 flex-col items-center gap-1 rounded-2xl px-2 py-1 text-center transition ${
-                  isActive ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
+                  isActive
+                    ? 'bg-[#0d4f4a] text-white shadow-lg shadow-[#0d4f4a]/30'
+                    : 'text-[#7a6f60] hover:bg-white/60'
                 }`}
                 aria-pressed={isActive}
                 onClick={() => handleBottomNav(item.action)}

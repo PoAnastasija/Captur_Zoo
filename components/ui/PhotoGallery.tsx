@@ -57,27 +57,27 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent
         showCloseButton={false}
-        className="inset-0 left-0 top-0 h-screen max-h-screen w-full max-w-none translate-x-0 translate-y-0 rounded-none border-none bg-white p-0"
+        className="inset-0 left-0 top-0 h-screen max-h-screen w-full max-w-none translate-x-0 translate-y-0 rounded-none border-none bg-[#fff9f0] p-0"
       >
-        <div className="flex h-full flex-col overflow-hidden">
-          <div className="flex items-center justify-between border-b px-4 py-4 sm:px-6">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[#f0dfc3] bg-gradient-to-r from-[#fff3da] to-[#ffe8c0] px-4 py-4 sm:px-6">
             <div>
-              <DialogTitle className="text-2xl font-bold">Galerie immersive</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-2xl font-bold text-[#1f2a24]">Galerie immersive</DialogTitle>
+              <DialogDescription className="text-[#4f5c55]">
                 Explore les résidents du zoo et partage tes clichés favoris.
               </DialogDescription>
             </div>
             <DialogClose asChild>
               <button
                 type="button"
-                className="rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-100"
+                className="rounded-full border border-[#d8c5a7] px-4 py-2 text-xs font-semibold text-[#4c3c2c] transition hover:bg-white/60"
               >
                 Fermer
               </button>
             </DialogClose>
           </div>
           <div className="px-4 pb-4 sm:px-6">
-            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-[#4f5c55]">
               <Button size="sm" variant="outline" onClick={() => handleManualCapture()}>
                 Activer l&rsquo;appareil photo
               </Button>
@@ -89,19 +89,19 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
                 className="hidden"
                 onChange={handleFileChange}
               />
-              <p className="text-[11px] text-gray-500">
+              <p className="text-[11px] text-[#827666]">
                 Utilise ton téléphone pour capturer les animaux en réalité augmentée.
               </p>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 pb-6 sm:px-6">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 sm:px-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {uniqueAnimals.map((animal) => {
                 const isCaptured = capturedIds.includes(animal.id);
                 return (
                   <div
                     key={animal.id}
-                    className="group overflow-hidden rounded-xl border border-gray-100 shadow-sm"
+                    className="group overflow-hidden rounded-2xl border border-[#f0dfc3] bg-white/80 shadow-[0_12px_30px_rgba(17,64,54,0.08)]"
                   >
                     <div className="relative h-40 w-full">
                       <Image
@@ -117,13 +117,13 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
                         <p className="text-xs opacity-80 drop-shadow">{animal.zoneName}</p>
                       </div>
                       {isCaptured && (
-                        <div className="absolute top-2 right-2 rounded-full bg-emerald-500/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white shadow">
+                        <div className="absolute top-2 right-2 rounded-full bg-[#7fba39]/95 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white shadow">
                           Capturé
                         </div>
                       )}
                     </div>
                     <div className="flex items-center justify-between px-4 py-3 text-sm">
-                      <span className="font-semibold text-gray-900">{animal.species}</span>
+                      <span className="font-semibold text-[#1f2a24]">{animal.species}</span>
                       <Badge variant="outline" className="text-xs">
                         {categoryLabels[animal.category]}
                       </Badge>

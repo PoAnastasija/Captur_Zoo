@@ -3308,7 +3308,7 @@ const deriveCategory = (tags?: string[] | null): PoiCategory => {
 
 const parsed = JSON.parse(rawJson) as { results: RawPoi[] };
 
-export const pois: Poi[] = parsed.results
+const basePois: Poi[] = parsed.results
   .filter((poi) => typeof poi.latitude === 'number' && typeof poi.longitude === 'number')
   .map((poi) => ({
     id: String(poi.id),
@@ -3321,3 +3321,19 @@ export const pois: Poi[] = parsed.results
     imageUrl: poi.media_url ?? poi.image_url ?? null,
     linkUrl: poi.link_url ?? null,
   }));
+
+export const pois: Poi[] = [
+  ...basePois,
+  {
+    id: 'km0-live-hub',
+    name: 'KM0 · Live Hub',
+    latitude: 47.7326,
+    longitude: 7.3489,
+    tags: ['monitoring', 'live'],
+    category: 'practical',
+    description:
+      'Observatoire digital du parc. Visualise en direct le flux des visiteurs connectés et les zones les plus demandées.',
+    imageUrl: null,
+    linkUrl: null,
+  },
+];

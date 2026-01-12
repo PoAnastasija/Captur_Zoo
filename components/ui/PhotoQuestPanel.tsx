@@ -34,7 +34,7 @@ export function PhotoQuestPanel({ quests, animals, capturedIds, open, onClose }:
         showCloseButton={false}
         className="inset-0 left-0 top-0 h-full max-w-none translate-x-0 translate-y-0 rounded-none border-none bg-white p-0"
       >
-        <div className="flex h-full flex-col">
+        <div className="flex h-full min-h-0 flex-col">
           <div className="flex items-center justify-between border-b px-6 py-4">
             <div>
               <DialogTitle className="text-2xl font-bold">Objectifs photo AR</DialogTitle>
@@ -51,7 +51,7 @@ export function PhotoQuestPanel({ quests, animals, capturedIds, open, onClose }:
               </button>
             </DialogClose>
           </div>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto px-6 py-6">
             {quests.map((quest) => {
               const progressPercent = Math.round(quest.progress * 100);
               return (

@@ -22,7 +22,7 @@ export function BadgePanel({ badges, open, onClose, onToggleBadge }: BadgePanelP
         showCloseButton={false}
         className="inset-0 left-0 top-0 h-screen max-h-screen w-full max-w-none translate-x-0 translate-y-0 rounded-none border-none bg-white p-0"
       >
-        <div className="flex h-full flex-col overflow-hidden">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
           <div className="flex items-center justify-between border-b px-4 py-4 sm:px-6">
             <div>
               <DialogTitle className="text-2xl font-bold">Centre des badges</DialogTitle>
@@ -37,7 +37,7 @@ export function BadgePanel({ badges, open, onClose, onToggleBadge }: BadgePanelP
               </button>
             </DialogClose>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6 sm:px-6">
             <div className="grid gap-4 md:grid-cols-2">
               {badges.map((badge) => (
                 <Card key={badge.id} className={`border ${badge.unlocked ? 'border-blue-500' : 'border-gray-200'}`}>

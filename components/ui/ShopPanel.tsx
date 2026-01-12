@@ -104,7 +104,7 @@ export function ShopPanel({ open, onClose, onOpenCrowdReport, onOpenNotification
                 className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left text-sm font-semibold text-emerald-800 transition hover:border-emerald-300"
                 onClick={onOpenCrowdReport}
               >
-                Signaler une zone d'affluence
+                Signaler une zone d&rsquo;affluence
               </button>
               <button
                 type="button"
