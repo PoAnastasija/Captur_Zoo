@@ -5,9 +5,9 @@ import { useRef } from 'react';
 import { Animal } from '@/types/zoo';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -55,14 +55,27 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-hidden p-0">
+      <DialogContent
+        showCloseButton={false}
+        className="inset-0 left-0 top-0 h-full max-w-none translate-x-0 translate-y-0 rounded-none border-none bg-white p-0"
+      >
         <div className="flex h-full flex-col">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle className="text-2xl font-bold">Galerie immersive</DialogTitle>
-            <DialogDescription>
-              Explore les résidents du zoo et partage tes clichés favoris.
-            </DialogDescription>
-          </DialogHeader>
+          <div className="flex items-center justify-between border-b px-6 py-4">
+            <div>
+              <DialogTitle className="text-2xl font-bold">Galerie immersive</DialogTitle>
+              <DialogDescription>
+                Explore les résidents du zoo et partage tes clichés favoris.
+              </DialogDescription>
+            </div>
+            <DialogClose asChild>
+              <button
+                type="button"
+                className="rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-100"
+              >
+                Fermer
+              </button>
+            </DialogClose>
+          </div>
           <div className="px-6 pb-4">
             <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
               <Button size="sm" variant="outline" onClick={() => handleManualCapture()}>
