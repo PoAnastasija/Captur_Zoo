@@ -57,10 +57,10 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent
         showCloseButton={false}
-        className="inset-0 left-0 top-0 h-full max-w-none translate-x-0 translate-y-0 rounded-none border-none bg-white p-0"
+        className="inset-0 left-0 top-0 h-screen max-h-screen w-full max-w-none translate-x-0 translate-y-0 rounded-none border-none bg-white p-0"
       >
-        <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between border-b px-6 py-4">
+        <div className="flex h-full flex-col overflow-hidden">
+          <div className="flex items-center justify-between border-b px-4 py-4 sm:px-6">
             <div>
               <DialogTitle className="text-2xl font-bold">Galerie immersive</DialogTitle>
               <DialogDescription>
@@ -76,7 +76,7 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
               </button>
             </DialogClose>
           </div>
-          <div className="px-6 pb-4">
+          <div className="px-4 pb-4 sm:px-6">
             <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
               <Button size="sm" variant="outline" onClick={() => handleManualCapture()}>
                 Activer l&rsquo;appareil photo
@@ -94,7 +94,7 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
               </p>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-6 pb-6">
+          <div className="flex-1 overflow-y-auto px-4 pb-6 sm:px-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {uniqueAnimals.map((animal) => {
                 const isCaptured = capturedIds.includes(animal.id);

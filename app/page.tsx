@@ -7,15 +7,15 @@ import { baseBadges } from './data/badges';
 import { pois } from './data/pois';
 import { baseNotifications } from './data/notifications';
 import { photoQuests as basePhotoQuests } from './data/objectives';
-import { Animal, CrowdLevel, PhotoQuest, ZooNotification } from './types/zoo';
+import { Animal, BadgeReward, CrowdLevel, PhotoQuest, ZooNotification } from './types/zoo';
 import AnimalModal from '../components/ui/AnimalModal';
 import { BadgePanel } from '@/components/ui/BadgePanel';
 import { NotificationPanel } from '@/components/ui/NotificationPanel';
 import { PhotoGallery } from '@/components/ui/PhotoGallery';
 import { CrowdReportPanel } from '@/components/ui/CrowdReportPanel';
 import { PhotoQuestPanel } from '@/components/ui/PhotoQuestPanel';
-import { ShopPanel } from '@/components/ui/ShopPanel';
 import {
+  AlertTriangle,
   Bell,
   Camera,
   CalendarDays,
@@ -25,7 +25,7 @@ import {
   CloudSun,
   Medal,
   Navigation2,
-  ShoppingBag,
+  Smartphone,
   Sun,
   Wind,
 } from 'lucide-react';
@@ -60,7 +60,7 @@ type WeatherState =
 
 type PhotoQuestProgress = PhotoQuest & { progress: number; completed: boolean };
 
-type BottomNavAction = 'map' | 'agenda' | 'photos' | 'badges' | 'alerts' | 'shop';
+type BottomNavAction = 'map' | 'agenda' | 'photos' | 'badges' | 'alerts' | 'report';
 
 const weatherMetaMap: Record<number, { label: string; icon: LucideIcon; accent: string }> = {
   0: { label: 'Grand soleil', icon: Sun, accent: 'text-amber-600' },
@@ -90,6 +90,23 @@ const ZOO_BOUNDS: [[number, number], [number, number]] = [
   [47.7349, 7.3528],
 ];
 
+const EARTH_RADIUS_METERS = 6371000;
+const DEFAULT_PROXIMITY_RADIUS = 180;
+
+const toRadians = (value: number) => (value * Math.PI) / 180;
+
+const getDistanceMeters = (a: [number, number], b: [number, number]) => {
+  const [lat1, lon1] = a;
+  const [lat2, lon2] = b;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const haversine =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  return EARTH_RADIUS_METERS * c;
+};
+
 
 const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
   ssr: false,
@@ -117,12 +134,16 @@ export default function Home() {
     basePhotoQuests.map((quest) => ({ ...quest, progress: 0, completed: false }))
   );
   const [userLocated, setUserLocated] = useState(false);
+  const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [weatherState, setWeatherState] = useState<WeatherState>({ status: 'loading' });
-  const [shopPanelOpen, setShopPanelOpen] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const [proximityAlertsEnabled, setProximityAlertsEnabled] = useState(false);
+  const [badgeToast, setBadgeToast] = useState<BadgeReward | null>(null);
   const [activeNav, setActiveNav] = useState<BottomNavAction>('map');
   const highCrowdZonesRef = useRef<Set<string>>(new Set());
   const lastGeoErrorRef = useRef<string | null>(null);
   const completedQuestsRef = useRef<Set<string>>(new Set());
+  const deliveredProximityRef = useRef<Set<string>>(new Set());
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
 
   const handleAnimalClick = (animal: Animal) => {
@@ -134,17 +155,27 @@ export default function Home() {
   const unreadCount = notifications.filter((notification) => notification.unread).length;
 
   const unlockBadge = useCallback((badgeId: string) => {
+    let unlockedBadge: BadgeReward | null = null;
     setBadges((current) =>
-      current.map((badge) =>
-        badge.id === badgeId
-          ? {
-              ...badge,
-              unlocked: true,
-              progress: 1,
-            }
-          : badge
-      )
+      current.map((badge) => {
+        if (badge.id !== badgeId) {
+          return badge;
+        }
+        if (badge.unlocked) {
+          return badge;
+        }
+        const nextBadge = {
+          ...badge,
+          unlocked: true,
+          progress: 1,
+        };
+        unlockedBadge = nextBadge;
+        return nextBadge;
+      })
     );
+    if (unlockedBadge) {
+      setBadgeToast(unlockedBadge);
+    }
   }, []);
 
   const addNotification = useCallback((payload: Omit<ZooNotification, 'id' | 'timestamp' | 'unread'>) => {
@@ -167,7 +198,7 @@ export default function Home() {
   };
 
   const simulateCrowd = useCallback(() => {
-    const alerts: Array<{ zone: string; count: number; capacity: number }> = [];
+    const alerts: Array<{ zone: string; count: number; capacity: number; coords: [number, number] }> = [];
 
     setMapAnimals((prev) =>
       prev.map((animal) => {
@@ -177,7 +208,7 @@ export default function Home() {
 
         if (nextLevel === 'high' && !highCrowdZonesRef.current.has(animal.id)) {
           highCrowdZonesRef.current.add(animal.id);
-          alerts.push({ zone: animal.zoneName, count: nextCount, capacity: animal.capacity });
+          alerts.push({ zone: animal.zoneName, count: nextCount, capacity: animal.capacity, coords: animal.position });
         } else if (nextLevel !== 'high' && highCrowdZonesRef.current.has(animal.id)) {
           highCrowdZonesRef.current.delete(animal.id);
         }
@@ -191,6 +222,10 @@ export default function Home() {
         title: `Affluence élevée - ${alert.zone}`,
         body: `Nous enregistrons ${alert.count} visiteurs (${Math.round((alert.count / alert.capacity) * 100)}% de la capacité).`,
         type: 'alert',
+        location: {
+          coords: alert.coords,
+          radiusMeters: DEFAULT_PROXIMITY_RADIUS,
+        },
       });
       unlockBadge('guardian');
     });
@@ -260,6 +295,7 @@ export default function Home() {
 
   const handleUserLocation = useCallback(
     (coords: [number, number]) => {
+      setUserPosition(coords);
       if (!userLocated) {
         setUserLocated(true);
         addNotification({
@@ -319,6 +355,77 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchWeather]);
 
+  useEffect(() => {
+    if (!badgeToast) {
+      return undefined;
+    }
+    const timer = setTimeout(() => setBadgeToast(null), 4200);
+    return () => clearTimeout(timer);
+  }, [badgeToast]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      return;
+    }
+    setNotificationPermission(Notification.permission);
+    if (Notification.permission === 'granted') {
+      setProximityAlertsEnabled(true);
+    }
+  }, []);
+
+  const showDeviceNotification = useCallback(
+    async (notification: ZooNotification) => {
+      if (typeof window === 'undefined' || notificationPermission !== 'granted') {
+        return;
+      }
+
+      const options: NotificationOptions = {
+        body: notification.body,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        data: { id: notification.id, type: notification.type },
+        tag: notification.id,
+        vibrate: [200, 75, 200],
+      };
+
+      try {
+        if ('serviceWorker' in navigator) {
+          const registration = await navigator.serviceWorker.ready;
+          await registration.showNotification(notification.title, options);
+          return;
+        }
+      } catch (error) {
+        console.error('Service worker notification error', error);
+      }
+
+      if ('Notification' in window) {
+        new Notification(notification.title, options);
+      }
+    },
+    [notificationPermission]
+  );
+
+  useEffect(() => {
+    if (!proximityAlertsEnabled || notificationPermission !== 'granted' || !userPosition) {
+      return;
+    }
+
+    notifications.forEach((notification) => {
+      if (!notification.location) {
+        return;
+      }
+      if (deliveredProximityRef.current.has(notification.id)) {
+        return;
+      }
+      const distance = getDistanceMeters(userPosition, notification.location.coords);
+      const radius = notification.location.radiusMeters ?? DEFAULT_PROXIMITY_RADIUS;
+      if (distance <= radius) {
+        deliveredProximityRef.current.add(notification.id);
+        void showDeviceNotification(notification);
+      }
+    });
+  }, [notifications, proximityAlertsEnabled, notificationPermission, userPosition, showDeviceNotification]);
+
   const handleCrowdReport = useCallback(
     ({ animalId, level, comment }: { animalId: string; level: CrowdLevel; comment: string }) => {
       let updatedZone: Animal | null = null;
@@ -343,6 +450,10 @@ export default function Home() {
           title: `Signalement ${levelLabels[level]} - ${updatedZone.zoneName}`,
           body: `${comment ? `${comment} · ` : ''}Affluence estimée à ${updatedZone.visitorCount}/${updatedZone.capacity} visiteurs.`,
           type: level === 'high' ? 'alert' : 'info',
+          location: {
+            coords: updatedZone.position,
+            radiusMeters: DEFAULT_PROXIMITY_RADIUS,
+          },
         });
         unlockBadge('guardian');
       }
@@ -363,6 +474,12 @@ export default function Home() {
         ? `Ajoutée à ton album dans la zone ${targetAnimal.zoneName}.`
         : 'Nouvelle capture ajoutée à ton album.',
       type: 'event',
+      location: targetAnimal
+        ? {
+            coords: targetAnimal.position,
+            radiusMeters: 130,
+          }
+        : undefined,
     });
   };
 
@@ -378,13 +495,60 @@ export default function Home() {
     [addNotification, unlockBadge]
   );
 
+  const handleBadgeToggle = useCallback((badgeId: string, shouldUnlock: boolean) => {
+    let toggledBadge: BadgeReward | null = null;
+    setBadges((current) =>
+      current.map((badge) => {
+        if (badge.id !== badgeId) {
+          return badge;
+        }
+        const nextBadge = {
+          ...badge,
+          unlocked: shouldUnlock,
+          progress: shouldUnlock ? 1 : 0,
+        };
+        toggledBadge = nextBadge;
+        return nextBadge;
+      })
+    );
+    if (shouldUnlock && toggledBadge) {
+      setBadgeToast(toggledBadge);
+    }
+  }, []);
+
+  const handleEnableProximityAlerts = useCallback(async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      addNotification({
+        title: 'Notifications locales indisponibles',
+        body: 'Ton appareil ne supporte pas les alertes de proximité.',
+        type: 'info',
+      });
+      return;
+    }
+
+    let permission = Notification.permission;
+    if (permission === 'default') {
+      permission = await Notification.requestPermission();
+    }
+
+    setNotificationPermission(permission);
+    if (permission === 'granted') {
+      setProximityAlertsEnabled(true);
+    } else if (permission === 'denied') {
+      addNotification({
+        title: 'Notifications bloquées',
+        body: 'Active les notifications dans les réglages système pour recevoir les alertes de proximité.',
+        type: 'alert',
+      });
+    }
+  }, [addNotification]);
+
   const closeAllPanels = () => {
     setBadgePanelOpen(false);
     setNotificationPanelOpen(false);
     setPhotoGalleryOpen(false);
     setCrowdReportOpen(false);
     setQuestPanelOpen(false);
-    setShopPanelOpen(false);
   };
 
   const resetNavToMap = () => setActiveNav('map');
@@ -426,7 +590,7 @@ export default function Home() {
     { id: 'photos', label: 'Photos', icon: Camera, action: 'photos' },
     { id: 'badges', label: 'Badges', icon: Medal, action: 'badges' },
     { id: 'alerts', label: 'Actus', icon: Bell, action: 'alerts' },
-    { id: 'shop', label: 'Shop', icon: ShoppingBag, action: 'shop' },
+    { id: 'report', label: 'Signaler', icon: AlertTriangle, action: 'report' },
   ];
 
   const handleBottomNav = (action: BottomNavAction) => {
@@ -453,8 +617,8 @@ export default function Home() {
       case 'alerts':
         setNotificationPanelOpen(true);
         break;
-      case 'shop':
-        setShopPanelOpen(true);
+      case 'report':
+        setCrowdReportOpen(true);
         break;
       default:
         break;
@@ -462,23 +626,41 @@ export default function Home() {
   };
 
   return (
-    <main className="relative flex min-h-screen w-full flex-col overflow-x-hidden bg-slate-50 pb-28">
+    <main className="relative flex min-h-screen w-full flex-col overflow-x-hidden bg-slate-50 pb-0">
       {/* Header */}
       <div className="sticky top-0 z-[1100] border-b border-white/70 bg-white/95 shadow-sm backdrop-blur">
-        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
           <h1 className="text-2xl font-bold text-gray-900">🦁 Zoo de Mulhouse</h1>
-          <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm">
-            {weatherChip}
-            {unreadCount > 0 && (
-              <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                +{unreadCount}
-              </span>
-            )}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm">
+              {weatherChip}
+              {unreadCount > 0 && (
+                <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                  +{unreadCount}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              aria-pressed={proximityAlertsEnabled && notificationPermission === 'granted'}
+              disabled={proximityAlertsEnabled && notificationPermission === 'granted'}
+              onClick={handleEnableProximityAlerts}
+              className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-1.5 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 ${
+                proximityAlertsEnabled && notificationPermission === 'granted'
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Smartphone className="h-4 w-4" />
+              {proximityAlertsEnabled && notificationPermission === 'granted'
+                ? 'Alertes proximité actives'
+                : 'Activer alertes proximité'}
+            </button>
           </div>
         </div>
       </div>
       {/* Carte */}
-      <div ref={mapSectionRef} className="relative flex-1 min-h-[65vh] w-full">
+      <div ref={mapSectionRef} className="relative flex-1 w-full min-h-[calc(100vh-140px)]">
         <ZooMap
           animals={mapAnimals}
           onAnimalClick={handleAnimalClick}
@@ -499,6 +681,7 @@ export default function Home() {
       <BadgePanel
         badges={badges}
         open={badgePanelOpen}
+        onToggleBadge={handleBadgeToggle}
         onClose={() => {
           setBadgePanelOpen(false);
           resetNavToMap();
@@ -544,23 +727,21 @@ export default function Home() {
           resetNavToMap();
         }}
       />
-      <ShopPanel
-        open={shopPanelOpen}
-        onClose={() => {
-          setShopPanelOpen(false);
-          resetNavToMap();
-        }}
-        onOpenCrowdReport={() => {
-          setShopPanelOpen(false);
-          setCrowdReportOpen(true);
-          setActiveNav('shop');
-        }}
-        onOpenNotifications={() => {
-          setShopPanelOpen(false);
-          setNotificationPanelOpen(true);
-          setActiveNav('alerts');
-        }}
-      />
+
+      {badgeToast && (
+        <div className="pointer-events-none fixed inset-x-0 top-28 z-[1500] flex justify-center px-4">
+          <div className="badge-pop w-full max-w-sm rounded-3xl border border-emerald-200 bg-white/95 p-5 text-center shadow-2xl">
+            <div className="mb-3 text-5xl" aria-hidden>
+              {badgeToast.icon}
+            </div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-emerald-600">
+              Badge débloqué
+            </p>
+            <p className="text-xl font-bold text-gray-900">{badgeToast.title}</p>
+            <p className="text-sm text-gray-500">{badgeToast.description}</p>
+          </div>
+        </div>
+      )}
 
       {/* Bottom navigation */}
       <div className="fixed bottom-4 left-1/2 z-[1200] w-[94%] max-w-2xl -translate-x-1/2 rounded-3xl border border-gray-200 bg-white/95 px-2 py-2 shadow-2xl">

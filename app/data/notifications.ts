@@ -8,6 +8,10 @@ export const baseNotifications: ZooNotification[] = [
     type: 'event',
     timestamp: new Date().toISOString(),
     unread: true,
+    location: {
+      coords: [47.7324, 7.3487],
+      radiusMeters: 140,
+    },
   },
   {
     id: 'notif-2',
@@ -16,6 +20,10 @@ export const baseNotifications: ZooNotification[] = [
     type: 'alert',
     timestamp: new Date().toISOString(),
     unread: true,
+    location: {
+      coords: [47.7332, 7.3461],
+      radiusMeters: 120,
+    },
   },
   {
     id: 'notif-3',
@@ -24,5 +32,9 @@ export const baseNotifications: ZooNotification[] = [
     type: 'info',
     timestamp: new Date().toISOString(),
     unread: false,
+    location: {
+      coords: [47.7318, 7.3509],
+      radiusMeters: 160,
+    },
   },
 ];

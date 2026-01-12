@@ -146,6 +146,12 @@ export default function ZooMap({
   const mapRef = useRef<L.Map | null>(null);
   const hasCenteredUserRef = useRef(false);
   const mapBounds = useMemo(() => bounds ?? defaultBounds, [bounds]);
+  const fitMapToBounds = useCallback(() => {
+    if (mapRef.current) {
+      mapRef.current.fitBounds(mapBounds, { padding: [24, 24] });
+    }
+  }, [mapBounds]);
+
   const handlePositionSuccess = useCallback(
     (position: GeolocationPosition) => {
       const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
@@ -208,6 +214,10 @@ export default function ZooMap({
     return () => navigator.geolocation.clearWatch(watchId);
   }, [handlePositionError, handlePositionSuccess, isGeoSupported]);
 
+  useEffect(() => {
+    fitMapToBounds();
+  }, [fitMapToBounds]);
+
   return (
     <div className="relative h-full w-full">
       <MapContainer
@@ -223,13 +233,15 @@ export default function ZooMap({
         dragging
         inertia
         inertiaDeceleration={3000}
-        className="w-full"
-        style={{ minHeight: '70vh', height: '100%' }}
+        className="h-full w-full"
+        style={{ minHeight: 'calc(100vh - 110px)' }}
         zoomControl
         maxBounds={mapBounds}
         maxBoundsViscosity={0.35}
+        bounds={mapBounds}
         whenCreated={(mapInstance) => {
           mapRef.current = mapInstance;
+          fitMapToBounds();
         }}
       >
         <TileLayer

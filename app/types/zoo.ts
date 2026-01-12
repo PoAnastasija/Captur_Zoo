@@ -40,6 +40,11 @@ export interface BadgeReward {
   icon: string;
 }
 
+export interface NotificationLocation {
+  coords: [number, number];
+  radiusMeters?: number;
+}
+
 export interface ZooNotification {
   id: string;
   title: string;
@@ -47,6 +52,7 @@ export interface ZooNotification {
   type: 'event' | 'alert' | 'info';
   timestamp: string;
   unread: boolean;
+  location?: NotificationLocation;
 }
 
 export interface PhotoQuest {
