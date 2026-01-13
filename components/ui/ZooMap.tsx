@@ -163,6 +163,7 @@ export default function ZooMap({
     () => (isGeoSupported ? null : GEO_UNSUPPORTED_MESSAGE)
   );
   const mapRef = useRef<L.Map | null>(null);
+  const [initialCenter, setInitialCenter] = useState<[number, number]>(FALLBACK_CENTER);
 
   const crowdStats = useMemo(() => {
     const totalCapacity = animals.reduce((sum, animal) => sum + animal.capacity, 0);
@@ -190,6 +191,7 @@ export default function ZooMap({
       setUserPosition(coords);
       setUserAccuracy(position.coords.accuracy);
       setGeoError(null);
+      setInitialCenter(coords);
       onUserLocation?.(coords);
     },
     [onUserLocation]
@@ -237,8 +239,6 @@ export default function ZooMap({
     if (!locationEnabled) {
       setUserPosition(null);
       setUserAccuracy(null);
-      setOutOfBoundsNotice(null);
-      lockMapToUser(false);
       return;
     }
 
@@ -254,15 +254,18 @@ export default function ZooMap({
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [handlePositionError, handlePositionSuccess, isGeoSupported, locationEnabled, lockMapToUser]);
+  }, [handlePositionError, handlePositionSuccess, isGeoSupported, locationEnabled]);
 
   useEffect(() => {
     if (!userPosition || !mapRef.current) {
       return;
     }
     const map = mapRef.current;
-    const targetZoom = Math.max(map.getZoom(), 17);
-    map.flyTo(userPosition, targetZoom, { duration: 0.8 });
+    // Only fly to user position on updates, not on initial load
+    if (map.getZoom() > 0) {
+      const targetZoom = Math.max(map.getZoom(), 17);
+      map.flyTo(userPosition, targetZoom, { duration: 0.8 });
+    }
   }, [userPosition]);
 
   return (
@@ -271,8 +274,8 @@ export default function ZooMap({
       style={{ height: height ?? '100%' }}
     >
       <MapContainer
-        center={FALLBACK_CENTER}
-        zoom={16}
+        center={initialCenter}
+        zoom={userPosition ? 17 : 16}
         minZoom={15}
         maxZoom={18}
         zoomSnap={0.25}
@@ -345,12 +348,6 @@ export default function ZooMap({
                 <div className="space-y-3 text-sm">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-gray-900">{poi.name}</h3>
-                    <span
-                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
-                      style={{ backgroundColor: poiColors[poi.category] }}
-                    >
-                      {poiLabels[poi.category]}
-                    </span>
                   </div>
                   {isLiveHub ? (
                     <div className="space-y-3 text-gray-900">
@@ -381,12 +378,6 @@ export default function ZooMap({
                           alt={poi.name}
                           className="h-32 w-full rounded-md object-cover"
                           loading="lazy"
-                        />
-                      )}
-                      {poi.description && (
-                        <div
-                          className="space-y-2 text-xs text-gray-600"
-                          dangerouslySetInnerHTML={{ __html: poi.description }}
                         />
                       )}
                         {poi.linkUrl && (

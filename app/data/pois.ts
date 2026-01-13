@@ -3872,13 +3872,11 @@ export const pois: Poi[] = [
   ...basePois,
   {
     id: 'km0-live-hub',
-    name: 'KM0 · Live Hub',
-    latitude: 47.7326,
-    longitude: 7.3489,
-    tags: ['monitoring', 'live'],
+    name: 'Epitech Mulhouse',
+    latitude: 47.7384477,
+    longitude: 7.32674,
+    tags: [],
     category: 'practical',
-    description:
-      'Observatoire digital du parc. Visualise en direct le flux des visiteurs connectés et les zones les plus demandées.',
     imageUrl: null,
     linkUrl: null,
   },
