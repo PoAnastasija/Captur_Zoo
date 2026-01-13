@@ -5,19 +5,28 @@ import dynamic from 'next/dynamic';
 import { baseBadges } from './data/badges';
 import { pois } from './data/pois';
 import { baseNotifications } from './data/notifications';
-import { photoQuests as basePhotoQuests } from './data/objectives';
-import { Animal, BadgeReward, CrowdLevel, CrowdReportEntry, PhotoQuest, ZooNotification } from './types/zoo';
+import {
+  Animal,
+  BadgeReward,
+  CaptureIntent,
+  CapturedPhoto,
+  CaptureStep,
+  CrowdLevel,
+  CrowdReportEntry,
+  ZooNotification,
+} from './types/zoo';
 import AnimalModal from '../components/ui/AnimalModal';
-import { BadgePanel } from '@/components/ui/BadgePanel';
+import { ZoodexPanel } from '@/components/ui/BadgePanel';
 import { NotificationPanel } from '@/components/ui/NotificationPanel';
 import { PhotoGallery } from '@/components/ui/PhotoGallery';
 import { CrowdReportPanel } from '@/components/ui/CrowdReportPanel';
-import { PhotoQuestPanel } from '@/components/ui/PhotoQuestPanel';
+import { ZooLogo } from '@/components/ui/ZooLogo';
+import { SettingsPanel } from '@/components/ui/SettingsPanel';
 import {
   AlertTriangle,
   Bell,
   Camera,
-  CalendarDays,
+  BookOpenCheck,
   Cloud,
   CloudLightning,
   CloudRain,
@@ -25,6 +34,7 @@ import {
   Medal,
   Navigation2,
   Smartphone,
+  Settings,
   Sun,
   Wind,
 } from 'lucide-react';
@@ -57,9 +67,7 @@ type WeatherState =
     }
   | { status: 'error' };
 
-type PhotoQuestProgress = PhotoQuest & { progress: number; completed: boolean };
-
-type BottomNavAction = 'map' | 'agenda' | 'photos' | 'badges' | 'alerts' | 'report';
+type BottomNavAction = 'map' | 'photos' | 'zoodex' | 'alerts' | 'report' | 'settings';
 
 const weatherMetaMap: Record<number, { label: string; icon: LucideIcon; accent: string }> = {
   0: { label: 'Grand soleil', icon: Sun, accent: 'text-amber-600' },
@@ -93,6 +101,11 @@ const EARTH_RADIUS_METERS = 6371000;
 const DEFAULT_PROXIMITY_RADIUS = 180;
 
 const CROWD_STORAGE_KEY = 'captur_zoo_crowd_reports';
+const PHOTOS_STORAGE_KEY = 'captur_zoo_photos';
+const captureStepLabel: Record<CaptureStep, string> = {
+  enclosure: 'panneau',
+  animal: 'animal',
+};
 
 const toRadians = (value: number) => (value * Math.PI) / 180;
 
@@ -139,19 +152,17 @@ export default function Home() {
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [mapAnimals, setMapAnimals] = useState<Animal[]>([]);
-  const [badgePanelOpen, setBadgePanelOpen] = useState(false);
+  const [zoodexOpen, setZoodexOpen] = useState(false);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [photoGalleryOpen, setPhotoGalleryOpen] = useState(false);
   const [crowdReportOpen, setCrowdReportOpen] = useState(false);
-  const [questPanelOpen, setQuestPanelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [badges, setBadges] = useState(baseBadges);
   const [notifications, setNotifications] = useState<ZooNotification[]>(baseNotifications);
   const [crowdReports, setCrowdReports] = useState<CrowdReportEntry[]>([]);
   const [visitedAnimalIds, setVisitedAnimalIds] = useState<string[]>([]);
   const [capturedAnimalIds, setCapturedAnimalIds] = useState<string[]>([]);
-  const [photoQuests, setPhotoQuests] = useState<PhotoQuestProgress[]>(() =>
-    basePhotoQuests.map((quest) => ({ ...quest, progress: 0, completed: false }))
-  );
+  const [capturedEnclosureIds, setCapturedEnclosureIds] = useState<string[]>([]);
   const [userLocated, setUserLocated] = useState(false);
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [weatherState, setWeatherState] = useState<WeatherState>({ status: 'loading' });
@@ -159,9 +170,11 @@ export default function Home() {
   const [proximityAlertsEnabled, setProximityAlertsEnabled] = useState(false);
   const [badgeToast, setBadgeToast] = useState<BadgeReward | null>(null);
   const [activeNav, setActiveNav] = useState<BottomNavAction>('map');
+  const [locationOptIn, setLocationOptIn] = useState(true);
+  const [cameraAccessEnabled, setCameraAccessEnabled] = useState(true);
+  const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const highCrowdZonesRef = useRef<Set<string>>(new Set());
   const lastGeoErrorRef = useRef<string | null>(null);
-  const completedQuestsRef = useRef<Set<string>>(new Set());
   const deliveredProximityRef = useRef<Set<string>>(new Set());
   const mainRef = useRef<HTMLElement | null>(null);
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
@@ -185,6 +198,39 @@ export default function Home() {
     } catch (error) {
       console.warn('Impossible de persister les signalements', error);
     }
+  }, []);
+
+  const persistCapturedPhotos = useCallback((nextPhotos: CapturedPhoto[]) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(PHOTOS_STORAGE_KEY, JSON.stringify(nextPhotos));
+    } catch (error) {
+      console.warn('Impossible de sauvegarder les photos', error);
+    }
+  }, []);
+
+  const readFileAsDataUrl = useCallback((file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('lecture-failed'));
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
+  const downloadPhoto = useCallback((dataUrl: string, filename: string) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = filename;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }, []);
 
   const sendRealtimeMessage = useCallback(
@@ -305,6 +351,23 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const storedPhotos = window.localStorage.getItem(PHOTOS_STORAGE_KEY);
+      if (storedPhotos) {
+        const parsed = JSON.parse(storedPhotos) as CapturedPhoto[];
+        if (Array.isArray(parsed)) {
+          setCapturedPhotos(parsed);
+        }
+      }
+    } catch (error) {
+      console.warn('Impossible de charger les photos enregistrées', error);
+    }
+  }, []);
+
+  useEffect(() => {
     persistCrowdReports(crowdReports);
   }, [crowdReports, persistCrowdReports]);
 
@@ -394,30 +457,6 @@ export default function Home() {
     }
   }, [userLocated, unlockBadge]);
 
-  useEffect(() => {
-    const capturedSet = new Set(capturedAnimalIds);
-    setPhotoQuests((prev) =>
-      prev.map((quest) => {
-        const hits = quest.targets.filter((target) => capturedSet.has(target)).length;
-        const progress = hits / quest.targets.length;
-        return { ...quest, progress, completed: progress === 1 };
-      })
-    );
-  }, [capturedAnimalIds]);
-
-  useEffect(() => {
-    photoQuests.forEach((quest) => {
-      if (quest.completed && !completedQuestsRef.current.has(quest.id)) {
-        completedQuestsRef.current.add(quest.id);
-        addNotification({
-          title: `Quête terminée - ${quest.title}`,
-          body: quest.reward,
-          type: 'event',
-        });
-        unlockBadge('shutterbug');
-      }
-    });
-  }, [photoQuests, addNotification, unlockBadge]);
 
   const handleMarkAsRead = (id: string) => {
     setNotifications((prev) =>
@@ -433,6 +472,9 @@ export default function Home() {
 
   const handleUserLocation = useCallback(
     (coords: [number, number]) => {
+      if (!locationOptIn) {
+        return;
+      }
       setUserPosition(coords);
       if (!userLocated) {
         setUserLocated(true);
@@ -443,7 +485,7 @@ export default function Home() {
         });
       }
     },
-    [addNotification, userLocated]
+    [addNotification, locationOptIn, userLocated]
   );
 
   const handleGeoError = useCallback(
@@ -628,13 +670,41 @@ export default function Home() {
     [addNotification, sendRealtimeMessage, unlockBadge]
   );
 
+  const handleCaptureEnclosure = (animalId: string) => {
+    if (capturedEnclosureIds.includes(animalId)) {
+      return;
+    }
+    setCapturedEnclosureIds((prev) => [...prev, animalId]);
+    const targetAnimal = mapAnimals.find((animal) => animal.id === animalId);
+    addNotification({
+      title: targetAnimal ? `Panneau scanné - ${targetAnimal.zoneName}` : 'Panneau scanné',
+      body: targetAnimal
+        ? `Tu peux maintenant tenter de capturer ${targetAnimal.name}.`
+        : 'Le panneau est enregistré, poursuis la capture de l’animal.',
+      type: 'info',
+      location: targetAnimal
+        ? {
+            coords: targetAnimal.position,
+            radiusMeters: 120,
+          }
+        : undefined,
+    });
+  };
+
   const handleCaptureAnimal = (animalId: string) => {
+    if (!capturedEnclosureIds.includes(animalId)) {
+      addNotification({
+        title: 'Panneau requis',
+        body: 'Scanne d’abord le panneau de l’enclos pour débloquer la capture.',
+        type: 'info',
+      });
+      return;
+    }
     if (capturedAnimalIds.includes(animalId)) {
       return;
     }
     setCapturedAnimalIds((prev) => [...prev, animalId]);
-    const targetAnimal =
-      mapAnimals.find((animal) => animal.id === animalId);
+    const targetAnimal = mapAnimals.find((animal) => animal.id === animalId);
     addNotification({
       title: targetAnimal ? `Photo capturée - ${targetAnimal.name}` : 'Photo capturée',
       body: targetAnimal
@@ -651,15 +721,44 @@ export default function Home() {
   };
 
   const handlePhotoUpload = useCallback(
-    (file: File) => {
-      addNotification({
-        title: 'Photo importée',
-        body: `Nouveau cliché ajouté (${file.name || 'photo mobile'}).`,
-        type: 'event',
-      });
-      unlockBadge('shutterbug');
+    async (file: File, intent: CaptureIntent) => {
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const targetAnimal = mapAnimals.find((animal) => animal.id === intent.animalId) ?? null;
+        const filenameBase = targetAnimal ? targetAnimal.name.replace(/\s+/g, '-').toLowerCase() : 'capture';
+        const filename = `${filenameBase}-${intent.step}-${Date.now()}.jpg`;
+        const photo: CapturedPhoto = {
+          id: `photo-${Date.now()}`,
+          animalId: intent.animalId,
+          step: intent.step,
+          takenAt: new Date().toISOString(),
+          dataUrl,
+          filename,
+        };
+        setCapturedPhotos((prev) => {
+          const next = [photo, ...prev];
+          persistCapturedPhotos(next);
+          return next;
+        });
+        downloadPhoto(dataUrl, filename);
+        addNotification({
+          title: 'Photo enregistrée',
+          body: targetAnimal
+            ? `${targetAnimal.name} (${captureStepLabel[intent.step]}) ajouté à ton Zoodex.`
+            : 'Nouvelle capture ajoutée à ton Zoodex.',
+          type: 'event',
+        });
+        unlockBadge('shutterbug');
+      } catch (error) {
+        console.error('Photo capture error', error);
+        addNotification({
+          title: 'Erreur capture',
+          body: 'Impossible de sauvegarder la photo. Réessaie dans un instant.',
+          type: 'alert',
+        });
+      }
     },
-    [addNotification, unlockBadge]
+    [addNotification, downloadPhoto, mapAnimals, persistCapturedPhotos, readFileAsDataUrl, unlockBadge]
   );
 
   const handleBadgeToggle = useCallback((badgeId: string, shouldUnlock: boolean) => {
@@ -710,15 +809,74 @@ export default function Home() {
     }
   }, [addNotification]);
 
+  const handleToggleLocation = useCallback(
+    (next: boolean) => {
+      setLocationOptIn(next);
+      if (!next) {
+        setUserPosition(null);
+        setUserLocated(false);
+        addNotification({
+          title: 'Localisation coupée',
+          body: 'La carte ne suivra plus ta position tant que tu ne la réactives pas.',
+          type: 'info',
+        });
+      } else {
+        addNotification({
+          title: 'Localisation réactivée',
+          body: 'Déplace-toi sur la carte pour forcer une nouvelle détection.',
+          type: 'info',
+        });
+      }
+    },
+    [addNotification]
+  );
+
+  const handleToggleNotifications = useCallback(
+    (next: boolean) => {
+      if (next) {
+        setProximityAlertsEnabled(true);
+        void handleEnableProximityAlerts();
+        return;
+      }
+      setProximityAlertsEnabled(false);
+      addNotification({
+        title: 'Alertes éloignées',
+        body: 'Tu ne recevras plus d’alertes push avant de les réactiver.',
+        type: 'info',
+      });
+    },
+    [addNotification, handleEnableProximityAlerts]
+  );
+
+  const handleToggleCamera = useCallback(
+    (next: boolean) => {
+      setCameraAccessEnabled(next);
+      addNotification({
+        title: next ? 'Caméra prête' : 'Caméra désactivée',
+        body: next
+          ? 'Les captures AR et le Zoodex sont de nouveau disponibles.'
+          : 'Les boutons de capture resteront inactifs.',
+        type: 'info',
+      });
+    },
+    [addNotification]
+  );
+
   const closeAllPanels = () => {
-    setBadgePanelOpen(false);
+    setZoodexOpen(false);
     setNotificationPanelOpen(false);
     setPhotoGalleryOpen(false);
     setCrowdReportOpen(false);
-    setQuestPanelOpen(false);
+    setSettingsOpen(false);
   };
 
-  const resetNavToMap = () => setActiveNav('map');
+  const resetNavToMap = useCallback(() => setActiveNav('map'), []);
+
+  const handleReturnToMap = useCallback(() => {
+    setSettingsOpen(false);
+    resetNavToMap();
+    mapSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [resetNavToMap, mapSectionRef]);
 
   const renderWeatherChip = () => {
     if (weatherState.status === 'loading') {
@@ -753,11 +911,11 @@ export default function Home() {
 
   const bottomNavItems: Array<{ id: string; label: string; icon: LucideIcon; action: BottomNavAction }> = [
     { id: 'map', label: 'Carte', icon: Navigation2, action: 'map' },
-    { id: 'agenda', label: 'Agenda', icon: CalendarDays, action: 'agenda' },
     { id: 'photos', label: 'Photos', icon: Camera, action: 'photos' },
-    { id: 'badges', label: 'Badges', icon: Medal, action: 'badges' },
+    { id: 'zoodex', label: 'Zoodex', icon: BookOpenCheck, action: 'zoodex' },
     { id: 'alerts', label: 'Actus', icon: Bell, action: 'alerts' },
     { id: 'report', label: 'Signaler', icon: AlertTriangle, action: 'report' },
+    { id: 'settings', label: 'Réglages', icon: Settings, action: 'settings' },
   ];
 
   const handleBottomNav = (action: BottomNavAction) => {
@@ -772,20 +930,20 @@ export default function Home() {
     setActiveNav(action);
 
     switch (action) {
-      case 'agenda':
-        setQuestPanelOpen(true);
-        break;
       case 'photos':
         setPhotoGalleryOpen(true);
         break;
-      case 'badges':
-        setBadgePanelOpen(true);
+      case 'zoodex':
+        setZoodexOpen(true);
         break;
       case 'alerts':
         setNotificationPanelOpen(true);
         break;
       case 'report':
         setCrowdReportOpen(true);
+        break;
+      case 'settings':
+        setSettingsOpen(true);
         break;
       default:
         break;
@@ -833,7 +991,7 @@ export default function Home() {
         className="sticky top-0 z-[1100] border-b border-white/10 bg-gradient-to-r from-[#0d4f4a]/95 via-[#0e5d54]/95 to-[#127c63]/95 text-white shadow-lg backdrop-blur"
       >
         <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow">🦁 Zoo de Mulhouse</h1>
+          <ZooLogo />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/90 px-4 py-1.5 text-xs font-medium text-[#1f2c27] shadow-md">
               {weatherChip}
@@ -877,6 +1035,7 @@ export default function Home() {
             bounds={ZOO_BOUNDS}
             pois={pois}
             height={mapHeight}
+            locationEnabled={locationOptIn}
           />
         </div>
       </div>
@@ -888,12 +1047,16 @@ export default function Home() {
         onClose={() => setIsModalOpen(false)}
       />
 
-      <BadgePanel
+      <ZoodexPanel
         badges={badges}
-        open={badgePanelOpen}
+        animals={mapAnimals}
+        capturedAnimals={capturedAnimalIds}
+        capturedEnclosures={capturedEnclosureIds}
+        photos={capturedPhotos}
+        open={zoodexOpen}
         onToggleBadge={handleBadgeToggle}
         onClose={() => {
-          setBadgePanelOpen(false);
+          setZoodexOpen(false);
           resetNavToMap();
         }}
       />
@@ -910,14 +1073,17 @@ export default function Home() {
       />
       <PhotoGallery
         animals={mapAnimals}
-        capturedIds={capturedAnimalIds}
+        capturedAnimals={capturedAnimalIds}
+        capturedEnclosures={capturedEnclosureIds}
         open={photoGalleryOpen}
         onClose={() => {
           setPhotoGalleryOpen(false);
           resetNavToMap();
         }}
-        onCapture={handleCaptureAnimal}
+        onCaptureAnimal={handleCaptureAnimal}
+        onCaptureEnclosure={handleCaptureEnclosure}
         onUploadPhoto={handlePhotoUpload}
+        cameraEnabled={cameraAccessEnabled}
       />
       <CrowdReportPanel
         animals={mapAnimals}
@@ -928,15 +1094,20 @@ export default function Home() {
         }}
         onReport={handleCrowdReport}
       />
-      <PhotoQuestPanel
-        quests={photoQuests}
-        animals={mapAnimals}
-        capturedIds={capturedAnimalIds}
-        open={questPanelOpen}
+      <SettingsPanel
+        open={settingsOpen}
         onClose={() => {
-          setQuestPanelOpen(false);
+          setSettingsOpen(false);
           resetNavToMap();
         }}
+        onReturnToMap={handleReturnToMap}
+        locationEnabled={locationOptIn}
+        onToggleLocation={handleToggleLocation}
+        notificationsEnabled={proximityAlertsEnabled && notificationPermission === 'granted'}
+        onToggleNotifications={handleToggleNotifications}
+        notificationPermission={notificationPermission}
+        cameraEnabled={cameraAccessEnabled}
+        onToggleCamera={handleToggleCamera}
       />
 
       {badgeToast && (

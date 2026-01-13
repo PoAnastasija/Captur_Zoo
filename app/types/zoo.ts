@@ -1,5 +1,6 @@
 export type PoiCategory = 'animals' | 'plants' | 'practical' | 'other';
 export type CrowdLevel = 'low' | 'moderate' | 'high';
+export type CaptureStep = 'enclosure' | 'animal';
 
 export interface Animal {
   id: string;
@@ -74,4 +75,18 @@ export interface CrowdReportEntry {
   comment?: string;
   timestamp: string;
   contributor: string;
+}
+
+export interface CaptureIntent {
+  step: CaptureStep;
+  animalId: string;
+}
+
+export interface CapturedPhoto {
+  id: string;
+  animalId: string;
+  step: CaptureStep;
+  takenAt: string;
+  dataUrl: string;
+  filename: string;
 }

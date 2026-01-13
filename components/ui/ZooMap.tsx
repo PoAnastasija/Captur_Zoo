@@ -145,6 +145,7 @@ interface ZooMapProps {
   bounds?: LatLngBoundsExpression;
   pois?: Poi[];
   height?: number | string;
+  locationEnabled?: boolean;
 }
 
 const defaultBounds: LatLngBoundsExpression = [
@@ -160,6 +161,7 @@ export default function ZooMap({
   bounds,
   pois,
   height,
+  locationEnabled = true,
 }: ZooMapProps) {
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [userAccuracy, setUserAccuracy] = useState<number | null>(null);
@@ -260,13 +262,19 @@ export default function ZooMap({
   );
 
   const requestManualLocation = useCallback(() => {
+    if (!locationEnabled) {
+      const message = 'La localisation est désactivée dans les paramètres.';
+      setGeoError(message);
+      onGeoError?.(message);
+      return;
+    }
     if (!isGeoSupported || typeof navigator === 'undefined' || !navigator.geolocation) {
       setGeoError(GEO_UNSUPPORTED_MESSAGE);
       onGeoError?.(GEO_UNSUPPORTED_MESSAGE);
       return;
     }
     navigator.geolocation.getCurrentPosition(handlePositionSuccess, handlePositionError, GEO_OPTIONS);
-  }, [handlePositionError, handlePositionSuccess, isGeoSupported, onGeoError]);
+  }, [handlePositionError, handlePositionSuccess, isGeoSupported, locationEnabled, onGeoError]);
 
   useEffect(() => {
     if (!isGeoSupported) {
@@ -275,6 +283,14 @@ export default function ZooMap({
   }, [isGeoSupported, onGeoError]);
 
   useEffect(() => {
+    if (!locationEnabled) {
+      setUserPosition(null);
+      setUserAccuracy(null);
+      setOutOfBoundsNotice(null);
+      lockMapToUser(false);
+      return;
+    }
+
     if (!isGeoSupported || typeof navigator === 'undefined' || !navigator.geolocation) {
       return;
     }
@@ -287,7 +303,7 @@ export default function ZooMap({
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [handlePositionError, handlePositionSuccess, isGeoSupported]);
+  }, [handlePositionError, handlePositionSuccess, isGeoSupported, locationEnabled, lockMapToUser]);
 
   useEffect(() => {
     fitMapToBounds();

@@ -1,8 +1,9 @@
 "use client";
 
 import Image from 'next/image';
-import { useRef } from 'react';
-import { Animal } from '@/types/zoo';
+import { ChangeEvent, useMemo, useRef } from 'react';
+import { CheckCircle2, Circle, Lock } from 'lucide-react';
+import { Animal, CaptureIntent } from '@/types/zoo';
 import {
   Dialog,
   DialogClose,
@@ -15,11 +16,14 @@ import { Button } from '@/components/ui/button';
 
 interface PhotoGalleryProps {
   animals: Animal[];
-  capturedIds: string[];
+  capturedAnimals: string[];
+  capturedEnclosures: string[];
   open: boolean;
   onClose: () => void;
-  onCapture: (animalId: string) => void;
-  onUploadPhoto: (file: File) => void;
+  onCaptureAnimal: (animalId: string) => void;
+  onCaptureEnclosure: (animalId: string) => void;
+  onUploadPhoto: (file: File, intent: CaptureIntent) => void;
+  cameraEnabled: boolean;
 }
 
 const categoryLabels: Record<Animal['category'], string> = {
@@ -29,29 +33,51 @@ const categoryLabels: Record<Animal['category'], string> = {
   amphibian: 'Amphibiens',
 };
 
-export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, onUploadPhoto }: PhotoGalleryProps) {
-  const uniqueAnimals = Array.from(
-    new Map(animals.map((animal) => [animal.id, animal])).values()
+export function PhotoGallery({
+  animals,
+  capturedAnimals,
+  capturedEnclosures,
+  open,
+  onClose,
+  onCaptureAnimal,
+  onCaptureEnclosure,
+  onUploadPhoto,
+  cameraEnabled,
+}: PhotoGalleryProps) {
+  const uniqueAnimals = useMemo(
+    () => Array.from(new Map(animals.map((animal) => [animal.id, animal])).values()),
+    [animals]
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingAnimalRef = useRef<string | null>(null);
+  const pendingCaptureRef = useRef<CaptureIntent | null>(null);
 
-  const handleManualCapture = (animalId?: string) => {
-    pendingAnimalRef.current = animalId ?? null;
+  const handleManualCapture = (intent: CaptureIntent) => {
+    if (!cameraEnabled) {
+      return;
+    }
+    pendingCaptureRef.current = intent;
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      onUploadPhoto(file);
-      if (pendingAnimalRef.current) {
-        onCapture(pendingAnimalRef.current);
-      }
-      pendingAnimalRef.current = null;
+    const pending = pendingCaptureRef.current;
+    if (!file || !pending) {
       event.target.value = '';
+      return;
     }
+    onUploadPhoto(file, pending);
+    if (pending.step === 'enclosure') {
+      onCaptureEnclosure(pending.animalId);
+    } else {
+      onCaptureAnimal(pending.animalId);
+    }
+    pendingCaptureRef.current = null;
+    event.target.value = '';
   };
+
+  const enclosureSet = useMemo(() => new Set(capturedEnclosures), [capturedEnclosures]);
+  const animalSet = useMemo(() => new Set(capturedAnimals), [capturedAnimals]);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -64,7 +90,7 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
             <div>
               <DialogTitle className="text-2xl font-bold text-[#1f2a24]">Galerie immersive</DialogTitle>
               <DialogDescription className="text-[#4f5c55]">
-                Explore les résidents du zoo et partage tes clichés favoris.
+                Scanne d’abord le panneau de l’enclos, puis capture l’animal pour remplir ton Zoodex.
               </DialogDescription>
             </div>
             <DialogClose asChild>
@@ -76,28 +102,26 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
               </button>
             </DialogClose>
           </div>
-          <div className="px-4 pb-4 sm:px-6">
-            <div className="flex flex-wrap items-center gap-3 text-xs text-[#4f5c55]">
-              <Button size="sm" variant="outline" onClick={() => handleManualCapture()}>
-                Activer l&rsquo;appareil photo
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-              <p className="text-[11px] text-[#827666]">
-                Utilise ton téléphone pour capturer les animaux en réalité augmentée.
-              </p>
-            </div>
+          <div className="border-b border-[#efdec2] px-4 py-4 text-xs text-[#4f5c55] sm:px-6">
+            <p className="text-[11px] text-[#827666]">
+              Choisis le résident puis suis les deux étapes : panneau d’abord, animal ensuite. Chaque capture se sauvegarde dans
+              ton Zoodex et sur ton appareil.
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              disabled={!cameraEnabled}
+              onChange={handleFileChange}
+            />
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 sm:px-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {uniqueAnimals.map((animal) => {
-                const isCaptured = capturedIds.includes(animal.id);
+                const enclosureCaptured = enclosureSet.has(animal.id);
+                const animalCaptured = animalSet.has(animal.id);
                 return (
                   <div
                     key={animal.id}
@@ -116,9 +140,9 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
                         <p className="text-sm font-semibold drop-shadow">{animal.name}</p>
                         <p className="text-xs opacity-80 drop-shadow">{animal.zoneName}</p>
                       </div>
-                      {isCaptured && (
+                      {animalCaptured && (
                         <div className="absolute top-2 right-2 rounded-full bg-[#7fba39]/95 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white shadow">
-                          Capturé
+                          Animal capturé
                         </div>
                       )}
                     </div>
@@ -128,15 +152,58 @@ export function PhotoGallery({ animals, capturedIds, open, onClose, onCapture, o
                         {categoryLabels[animal.category]}
                       </Badge>
                     </div>
-                    <div className="px-4 pb-4">
-                      <Button
-                        className="w-full"
-                        variant={isCaptured ? 'secondary' : 'default'}
-                        disabled={isCaptured}
-                        onClick={() => handleManualCapture(animal.id)}
-                      >
-                        {isCaptured ? 'Déjà validé' : 'Scanner ce résident'}
-                      </Button>
+                    <div className="space-y-3 px-4 pb-4 text-sm">
+                      <div className="flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-wider">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${
+                            enclosureCaptured ? 'bg-[#e1f6d9] text-[#1d6432]' : 'bg-[#fff1d9] text-[#8a4b12]'
+                          }`}
+                        >
+                          {enclosureCaptured ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+                          Panneau
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${
+                            animalCaptured ? 'bg-[#e1f6d9] text-[#1d6432]' : 'bg-[#fff1d9] text-[#8a4b12]'
+                          }`}
+                        >
+                          {animalCaptured ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+                          Animal
+                        </span>
+                      </div>
+                      <div className="space-y-2 rounded-2xl border border-[#f3e3c6] bg-[#fff8ec] p-3">
+                        <p className="text-xs font-semibold text-[#a6611b]">Étape 1 · Panneau</p>
+                        <p className="text-xs text-[#715a3b]">Immortalise le panneau officiel de l’enclos pour débloquer la capture.</p>
+                        <Button
+                          className="w-full"
+                          variant="secondary"
+                          disabled={!cameraEnabled || enclosureCaptured}
+                          onClick={() => handleManualCapture({ step: 'enclosure', animalId: animal.id })}
+                        >
+                          {enclosureCaptured ? 'Panneau validé' : cameraEnabled ? 'Scanner le panneau' : 'Caméra désactivée'}
+                        </Button>
+                      </div>
+                      <div className="space-y-2 rounded-2xl border border-[#d0e7cf] bg-[#f2fff4] p-3">
+                        <p className="text-xs font-semibold text-[#0d5c3a]">Étape 2 · Animal</p>
+                        <p className="text-xs text-[#1f3b2a]">
+                          {enclosureCaptured
+                            ? 'Capture l’animal pour compléter cette rencontre.'
+                            : 'Étape verrouillée tant que le panneau n’est pas scanné.'}
+                        </p>
+                        <Button
+                          className="w-full"
+                          disabled={!cameraEnabled || !enclosureCaptured || animalCaptured}
+                          onClick={() => handleManualCapture({ step: 'animal', animalId: animal.id })}
+                        >
+                          {!enclosureCaptured ? 'Panneau requis' : animalCaptured ? 'Déjà validé' : 'Capturer cet animal'}
+                        </Button>
+                      </div>
+                      {!cameraEnabled && (
+                        <div className="flex items-center gap-2 rounded-xl bg-[#fef1f1] px-3 py-2 text-xs text-[#983737]">
+                          <Lock className="h-3.5 w-3.5" />
+                          Caméra désactivée dans les paramètres.
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
