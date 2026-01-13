@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { Animal } from '@/app/types/zoo';
 import {
@@ -10,6 +10,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { getAuthToken } from '@/components/ui/AuthButton';
 
 interface ZoodexPanelProps {
   animals: Animal[];
@@ -43,6 +44,30 @@ const quizzes: Record<string, Quiz> = {
   },
 };
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
+const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
+
+interface RemoteAnimal {
+  name: string;
+  latitude: number;
+  longitude: number;
+  image: string | null;
+  icon?: string | null;
+  type?: string;
+  unlocked?: boolean;
+}
+
+interface GalleryCard {
+  id: string;
+  name: string;
+  image: string;
+  captured: boolean;
+  detailSource?: Animal;
+  icon?: string | null;
+}
+
+const PLACEHOLDER_IMAGE = 'https://placehold.co/400x300?text=Animal';
+
 export function ZoodexPanel({
   animals,
   capturedAnimals,
@@ -53,14 +78,25 @@ export function ZoodexPanel({
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [quizAnswered, setQuizAnswered] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [remoteAnimals, setRemoteAnimals] = useState<RemoteAnimal[] | null>(null);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
 
   const uniqueAnimals = useMemo(
     () => Array.from(new Map(animals.map((animal) => [animal.id, animal])).values()),
     [animals]
   );
   const capturedSet = useMemo(() => new Set([...capturedAnimals, ...capturedEnclosures]), [capturedAnimals, capturedEnclosures]);
-
-  const testAnimals = uniqueAnimals.slice(0, 3);
+  const fallbackGallery = useMemo<GalleryCard[]>(() => {
+    return uniqueAnimals.slice(0, 3).map((animal) => ({
+      id: animal.id,
+      name: animal.name,
+      image: animal.image,
+      captured: capturedSet.has(animal.id),
+      detailSource: animal,
+    }));
+  }, [capturedSet, uniqueAnimals]);
 
   const handleAnimalClick = (animal: Animal) => {
     setSelectedAnimal(animal);
@@ -72,6 +108,86 @@ export function ZoodexPanel({
     setQuizAnswered(answerIndex);
     setShowResult(true);
   };
+
+  const remoteGallery = useMemo<GalleryCard[] | null>(() => {
+    if (!remoteAnimals || remoteAnimals.length === 0) {
+      return null;
+    }
+    return remoteAnimals.map((animal, index) => ({
+      id: `remote-${index}-${animal.name}`,
+      name: animal.name,
+      image: animal.image ?? PLACEHOLDER_IMAGE,
+      captured: Boolean(animal.unlocked),
+      icon: animal.icon ?? null,
+    }));
+  }, [remoteAnimals]);
+
+  const stats = useMemo(() => {
+    const source = remoteGallery && remoteGallery.length > 0 ? remoteGallery : fallbackGallery;
+    const capturedCount = source.filter((animal) => animal.captured).length;
+    return {
+      captured: capturedCount,
+      total: source.length,
+    };
+  }, [fallbackGallery, remoteGallery]);
+
+  const displayCards = remoteGallery && remoteGallery.length > 0 ? remoteGallery : fallbackGallery;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const token = getAuthToken();
+    if (!token) {
+      setAuthRequired(true);
+      setRemoteAnimals(null);
+      setRemoteLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setAuthRequired(false);
+    setRemoteLoading(true);
+    setRemoteError(null);
+
+    const fetchUserAnimals = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}:${BACKEND_PORT}/api/user/animals`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            setAuthRequired(true);
+            setRemoteAnimals(null);
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `Erreur ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!Array.isArray(data)) {
+          throw new Error('Réponse inattendue du serveur');
+        }
+        setRemoteAnimals(data as RemoteAnimal[]);
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          return;
+        }
+        setRemoteError(error instanceof Error ? error.message : 'Une erreur est survenue');
+      } finally {
+        setRemoteLoading(false);
+      }
+    };
+
+    fetchUserAnimals();
+
+    return () => controller.abort();
+  }, [open]);
 
   const getQuiz = (animalId: string) => {
     const key = animalId.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 30);
@@ -112,54 +228,67 @@ export function ZoodexPanel({
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 sm:px-6">
             <div className="mb-4 rounded-lg border border-white/60 bg-white/80 p-4 shadow-sm">
               <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#0d4f4a]">Animaux capturés</p>
-              <p className="mt-2 text-3xl font-bold text-[#1d2c27]">{testAnimals.filter(a => capturedSet.has(a.id)).length} / {testAnimals.length}</p>
+              <p className="mt-2 text-3xl font-bold text-[#1d2c27]">{stats.captured} / {stats.total}</p>
             </div>
+            {authRequired && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Connecte-toi pour synchroniser ta progression et ta galerie personnalisée.
+              </div>
+            )}
+            {remoteError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {remoteError}
+              </div>
+            )}
+            {remoteLoading && (
+              <div className="mb-4 rounded-lg border border-white/60 bg-white/80 px-4 py-3 text-sm text-[#1f2a24]">
+                Chargement de ta galerie...
+              </div>
+            )}
             <div className="w-full rounded-lg p-3 sm:p-4 md:p-6">
               <div className="space-y-3 sm:space-y-4 md:space-y-5">
-                {testAnimals.map((animal) => {
-                  const captured = capturedSet.has(animal.id);
+                {displayCards.map((card) => {
+                  const captured = card.captured;
+                  const isInteractive = Boolean(card.detailSource);
+                  const assetSrc = captured ? card.image : card.icon ?? card.image;
+                  const assetAlt = captured ? card.name : `Icône ${card.name}`;
+                  const shouldDesaturate = !captured && !card.icon;
                   return (
                     <button
-                      key={animal.id}
-                      onClick={() => handleAnimalClick(animal)}
-                      className="w-full flex gap-4 sm:gap-5 md:gap-6 p-4 sm:p-5 md:p-6 bg-white/80 hover:bg-white/95 border border-white/60 rounded-3xl shadow-sm transition-all duration-200 hover:shadow-md hover:scale-105 active:scale-95 text-left"
+                      key={card.id}
+                      type="button"
+                      onClick={() => card.detailSource && handleAnimalClick(card.detailSource)}
+                      disabled={!isInteractive}
+                      className={`w-full flex overflow-hidden bg-white/80 border border-white/60 rounded-3xl shadow-sm text-left h-32 sm:h-40 transition-all duration-200 ${
+                        isInteractive ? 'hover:bg-white/95 hover:shadow-md hover:scale-105 active:scale-95' : 'opacity-90 cursor-default'
+                      }`}
                     >
-                      {/* Image */}
-                      <div className={`relative w-32 h-32 sm:w-48 sm:h-48 md:w-56 md:h-56 flex-shrink-0 rounded-2xl overflow-hidden flex items-center justify-center ${captured ? 'bg-white' : 'bg-gray-100'}`}>
+                      {/* Image - Left side with 100% height */}
+                      <div className={`relative w-32 sm:w-40 flex-shrink-0 ${captured ? 'bg-white' : 'bg-gray-100'}`}>
                         <Image
-                          src={animal.image}
-                          alt={animal.name}
+                          src={assetSrc}
+                          alt={assetAlt}
                           fill
-                          className={`object-contain p-2 transition-all ${captured ? '' : 'grayscale opacity-70'}`}
-                          sizes="(max-width: 640px) 128px, (max-width: 768px) 192px, 224px"
+                            className={`object-cover transition-all ${shouldDesaturate ? 'grayscale opacity-70' : ''}`}
+                          sizes="(max-width: 640px) 128px, 160px"
                         />
                       </div>
 
-                      {/* Info */}
-                      <div className="flex-1 flex flex-col gap-2 sm:gap-3 justify-center">
+                      {/* Info - Right side */}
+                      <div className="flex-1 flex flex-col gap-2 sm:gap-3 justify-center p-4 sm:p-5">
                         <div>
-                          <h3 className="text-sm sm:text-base md:text-lg font-bold text-[#1f2a24] line-clamp-1">
-                            {animal.name}
+                          <h3 className="text-base sm:text-lg md:text-xl font-bold text-[#1f2a24] line-clamp-1">
+                            {card.name}
                           </h3>
-                          <p className="text-xs sm:text-sm text-[#6b5a46] line-clamp-1">
-                            {animal.zoneName}
-                          </p>
-                        </div>
-
-                        {/* Species Badge */}
-                        <div className="inline-flex w-fit">
-                          <span className="px-3 py-1 rounded-full border border-[#d2c4ab] bg-white/60 text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-[#8a4b12]">
-                            {animal.species}
-                          </span>
                         </div>
 
                         {/* Capture Status */}
                         <div className="flex gap-2 flex-wrap">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] sm:text-xs font-semibold uppercase tracking-wider ${
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold ${
                             captured ? 'bg-[#e1f6d9] text-[#1d6432]' : 'bg-[#fff1d9] text-[#8a4b12]'
                           }`}>
                             <span className={`w-2 h-2 rounded-full ${captured ? 'bg-[#1d6432]' : 'bg-[#8a4b12]'}`} />
-                            Animal
+                            {captured ? 'Capturé' : 'Non capturé'}
                           </span>
                         </div>
                       </div>

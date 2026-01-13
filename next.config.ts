@@ -18,6 +18,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'api.getwemap.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'placehold.co',
+      },
     ],
   },
 };

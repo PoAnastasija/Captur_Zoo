@@ -12,6 +12,7 @@ import { PhotoGallery } from '@/components/ui/PhotoGallery';
 import { CrowdReportPanel } from '@/components/ui/CrowdReportPanel';
 import { ZooLogo } from '@/components/ui/ZooLogo';
 import { SettingsPanel } from '@/components/ui/SettingsPanel';
+import { AuthButton } from '@/components/ui/AuthButton';
 import {
   AlertTriangle,
   Camera,
@@ -1057,12 +1058,13 @@ export default function Home() {
         ref={headerRef}
         className="sticky top-0 z-[1100] border-b border-white/10 bg-gradient-to-r from-[#0d4f4a]/95 via-[#0e5d54]/95 to-[#127c63]/95 text-white shadow-lg backdrop-blur"
       >
-        <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <ZooLogo />
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/90 px-4 py-1.5 text-xs font-medium text-[#1f2c27] shadow-md">
-              {weatherChip}
-            </div>
+        <div className="flex flex-col gap-3 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <ZooLogo />
+            <AuthButton />
+          </div>
+          <div className="w-full inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/90 px-4 py-1.5 text-xs font-medium text-[#1f2c27] shadow-md">
+            {weatherChip}
           </div>
         </div>
       </div>
