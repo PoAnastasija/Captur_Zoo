@@ -260,19 +260,18 @@ export default function ZooMap({
 
   const handleRecenter = useCallback(() => {
     const map = mapRef.current;
-
-    if (map && locationEnabled && userPosition) {
-      const targetZoom = Math.max(map.getZoom(), 17);
-      map.flyTo(userPosition, targetZoom, { duration: 0.8 });
+    if (!map) {
       return;
     }
 
-    if (locationEnabled) {
-      requestManualLocation();
-    }
+    const hasUserFix = Boolean(locationEnabled && userPosition);
+    const target = hasUserFix ? (userPosition as [number, number]) : FALLBACK_CENTER;
+    const targetZoom = hasUserFix ? Math.max(map.getZoom(), 17) : Math.max(map.getZoom(), 16);
 
-    if (map) {
-      map.flyTo(FALLBACK_CENTER, 16, { duration: 0.8 });
+    map.setView(target, targetZoom, { animate: true, duration: 0.8 });
+
+    if (!hasUserFix && locationEnabled) {
+      requestManualLocation();
     }
   }, [locationEnabled, requestManualLocation, userPosition]);
 
@@ -452,25 +451,27 @@ export default function ZooMap({
         <div className="pointer-events-none absolute right-4 top-4 z-[1000] flex flex-col items-end gap-2">
           <button
             type="button"
-            className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/95 px-4 py-2 text-sm font-semibold text-slate-900 shadow"
+            className="pointer-events-auto relative flex h-11 w-11 items-center justify-center rounded-full border border-white/70 bg-white/95 text-lg text-slate-900 shadow"
             onClick={toggleFilterMenu}
             aria-expanded={filterMenuOpen}
+            aria-label="Afficher les filtres"
           >
             <span aria-hidden>🎯</span>
-            <span>Filtres</span>
-            <span className="text-xs text-slate-500">{activeFilterCount}/{poiCategories.length}</span>
+            <span className="pointer-events-none absolute -right-1 -top-1 rounded-full bg-[#0d4f4a] px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
+              {activeFilterCount}
+            </span>
           </button>
           {filterMenuOpen && (
-            <div className="pointer-events-auto rounded-2xl border border-white/70 bg-white/95 p-3 text-sm text-slate-800 shadow-xl">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400">Points d’intérêt</p>
-              <div className="mt-2 space-y-2">
+            <div className="pointer-events-auto w-48 rounded-2xl border border-white/70 bg-white/95 p-2 text-xs text-slate-800 shadow-xl">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">Points d’intérêt</p>
+              <div className="mt-1 space-y-1.5">
                 {poiCategories.map((category) => {
                   const active = poiFilters[category];
                   return (
                     <button
                       key={category}
                       type="button"
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold ${
+                      className={`flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 font-semibold ${
                         active ? 'bg-[#0d4f4a] text-white' : 'bg-slate-100 text-slate-600'
                       }`}
                       onClick={() => handlePoiFilterToggle(category)}
@@ -488,14 +489,14 @@ export default function ZooMap({
           )}
         </div>
       )}
-      <div className="pointer-events-none absolute bottom-28 right-4 z-[1000]">
+      <div className="pointer-events-none absolute right-4 z-[1000]" style={{ bottom: '210px' }}>
         <button
           type="button"
-          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/70 bg-white px-4 py-2 text-sm font-semibold text-[#0d4f4a] shadow transition hover:bg-white/90"
+          className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full border border-white/70 bg-white text-xl text-[#0d4f4a] shadow transition hover:bg-white/90"
           onClick={handleRecenter}
+          aria-label="Recentrer la carte"
         >
           <span aria-hidden>📍</span>
-          Recentrer
         </button>
       </div>
       {geoError && (
