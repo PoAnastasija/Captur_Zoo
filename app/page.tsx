@@ -741,24 +741,16 @@ export default function Home() {
   };
 
   const handleCaptureAnimal = (animalId: string) => {
-    if (!capturedEnclosureIds.includes(animalId)) {
-      addNotification({
-        title: 'Panneau requis',
-        body: 'Scanne d’abord le panneau de l’enclos pour débloquer la capture.',
-        type: 'info',
-      });
-      return;
-    }
     if (capturedAnimalIds.includes(animalId)) {
       return;
     }
     setCapturedAnimalIds((prev) => [...prev, animalId]);
     const targetAnimal = mapAnimals.find((animal) => animal.id === animalId);
     addNotification({
-      title: targetAnimal ? `Photo capturée - ${targetAnimal.name}` : 'Photo capturée',
+      title: targetAnimal ? `🎉 Animal débloqué - ${targetAnimal.name}` : 'Animal débloqué',
       body: targetAnimal
-        ? `Ajoutée à ton album dans la zone ${targetAnimal.zoneName}.`
-        : 'Nouvelle capture ajoutée à ton album.',
+        ? `${targetAnimal.name} est maintenant visible en couleur dans ton Pokédex!`
+        : 'Nouvel animal débloqué dans ton Pokédex!',
       type: 'event',
       location: targetAnimal
         ? {
@@ -1104,13 +1096,10 @@ export default function Home() {
       />
 
       <ZoodexPanel
-        badges={badges}
         animals={mapAnimals}
         capturedAnimals={capturedAnimalIds}
         capturedEnclosures={capturedEnclosureIds}
-        photos={capturedPhotos}
         open={zoodexOpen}
-        onToggleBadge={handleBadgeToggle}
         onClose={() => {
           setZoodexOpen(false);
           resetNavToMap();

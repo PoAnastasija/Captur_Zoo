@@ -1,92 +1,64 @@
 import { Animal } from '../types/zoo';
+import { pois } from './pois';
 
-export const baseAnimals: Animal[] = [
+// Extract all animals from POIs
+const animalPois = pois.filter((poi) => poi.category === 'animals');
+
+// Create detailed test animals from the first 3 POIs
+const testAnimalsData = [
   {
-    id: 'lion-savane',
-    name: "Lion d'Afrique",
-    species: 'Panthera leo',
-    category: 'mammal',
-    zoneName: 'Savane Kasaï',
-    position: [47.7349, 7.3489],
-    image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=80',
+    id: animalPois[0]?.id || 'cercopitheques',
+    name: animalPois[0]?.name || 'Cercopithèques',
+    species: 'Cercopithecus spp.',
     description:
-      'Le groupe de lions de Mulhouse vit sur une vaste savane ponctuée de rochers chauffés. Les soigneurs y observent leurs interactions sociales riches et la hiérarchie du clan, notamment au moment des nourrissages publics.',
-    funFact: "Les rugissements du mâle peuvent être entendus à plus de 8 kilomètres quand l'air est sec.",
-    conservationStatus: 'VU',
-    feedingTimes: ['11:30', '16:00'],
-    capacity: 120,
-    visitorCount: 82,
-    crowdLevel: 'moderate',
-    enclosure: {
-      name: 'Belvédère des lions',
-      position: [47.7349, 7.3489],
-      radius: 28,
-    },
+      'Les cercopithèques sont des singes africains caractérisés par leurs visages expressifs et leurs couleurs variées. Ils vivent en groupes sociaux complexes dans les forêts tropicales.',
+    funFact:
+      'Les cercopithèques communiquent entre eux par plus de 30 sons différents, chacun ayant une signification spécifique!',
+    conservationStatus: 'LC' as const,
+    imageUrl: animalPois[0]?.imageUrl,
   },
   {
-    id: 'panda-roux-vallonne',
-    name: 'Panda roux',
-    species: 'Ailurus fulgens',
-    category: 'mammal',
-    zoneName: 'Forêt himalayenne',
-    position: [47.7336, 7.3506],
-    image: 'https://images.unsplash.com/photo-1444464666168-49d633b86797?auto=format&fit=crop&w=1200&q=80',
+    id: animalPois[1]?.id || 'loups-a-criniere',
+    name: animalPois[1]?.name || 'Loups à crinière',
+    species: 'Chrysocyon brachyurus',
     description:
-      "Le panda roux évolue dans une volière arborée ponctuée de cordes aériennes. Il passe l'essentiel de son temps dans les arbres et raffole des bambous fraîchement coupés chaque matin.",
-    funFact: 'Son pouce supplémentaire est en réalité un os du poignet hypertrophié.',
-    conservationStatus: 'EN',
-    feedingTimes: ['10:00', '15:30'],
-    capacity: 90,
-    visitorCount: 40,
-    crowdLevel: 'low',
-    enclosure: {
-      name: 'Canopée du panda roux',
-      position: [47.7336, 7.3506],
-      radius: 20,
-    },
+      'Le loup à crinière est le plus grand canidé sauvage d\'Amérique du Sud. Malgré son nom, ce n\'est pas un vrai loup mais plutôt un animal unique dans son genre.',
+    funFact: 'Le loup à crinière peut atteindre 1,40 m de hauteur aux épaules, principalement grâce à ses longues pattes!',
+    conservationStatus: 'VU' as const,
+    imageUrl: animalPois[1]?.imageUrl,
   },
   {
-    id: 'panthere-neige',
-    name: 'Panthère des neiges',
-    species: 'Panthera uncia',
-    category: 'mammal',
-    zoneName: "Monts de l'Altaï",
-    position: [47.7352, 7.352],
-    image: 'https://images.unsplash.com/photo-1474511014028-d4bb9d511abc?auto=format&fit=crop&w=1200&q=80',
+    id: animalPois[2]?.id || 'ours-polaires',
+    name: animalPois[2]?.name || 'Ours polaires',
+    species: 'Ursus maritimus',
     description:
-      "La panthère des neiges bénéficie d'un relief rocheux et de zones fraîches brumisées pour reproduire les conditions d'altitude. Elle se déplace en silence grâce à sa queue très longue qui lui sert de balancier.",
-    funFact: "Sa fourrure peut mesurer jusqu'à 12 cm d'épaisseur pour affronter -40 °C.",
-    conservationStatus: 'VU',
-    feedingTimes: ['12:30'],
-    capacity: 70,
-    visitorCount: 60,
-    crowdLevel: 'moderate',
-    enclosure: {
-      name: 'Corniche himalayenne',
-      position: [47.7352, 7.352],
-      radius: 22,
-    },
-  },
-  {
-    id: 'flamant-caraibes',
-    name: 'Flamant des Caraïbes',
-    species: 'Phoenicopterus ruber',
-    category: 'bird',
-    zoneName: 'Lagune tropicale',
-    position: [47.7324, 7.3478],
-    image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
-    description:
-      "La colonie occupe un bassin aux eaux peu profondes permettant d'observer la filtration de l'eau saumâtre. Leurs becs spécialisés retiennent les petits crustacés qui colorent leur plumage.",
-    funFact: 'Ils se reposent souvent sur une seule patte pour limiter la déperdition de chaleur.',
-    conservationStatus: 'LC',
-    feedingTimes: ['09:45', '14:15'],
-    capacity: 150,
-    visitorCount: 95,
-    crowdLevel: 'high',
-    enclosure: {
-      name: 'Lagune rose',
-      position: [47.7324, 7.3478],
-      radius: 26,
-    },
+      'L\'ours polaire est le plus grand carnivore terrestre. Parfaitement adapté à l\'Arctique, il possède une fourrure isolante et une épaisse couche de graisse.',
+    funFact: 'La fourrure de l\'ours polaire n\'est pas blanche mais transparente, et sa peau est noire pour absorber la chaleur!',
+    conservationStatus: 'VU' as const,
+    imageUrl: animalPois[2]?.imageUrl,
   },
 ];
+
+export const baseAnimals: Animal[] = testAnimalsData
+  .filter((animal) => animal.imageUrl) // Only include animals with images
+  .map((animal) => ({
+    id: animal.id,
+    name: animal.name,
+    species: animal.species,
+    category: 'mammal' as const,
+    zoneName: animal.name,
+    position: [47.7336, 7.3478], // Default zoo position
+    image: animal.imageUrl || 'https://via.placeholder.com/400?text=Image+non+disponible',
+    description: animal.description,
+    funFact: animal.funFact,
+    conservationStatus: animal.conservationStatus,
+    feedingTimes: ['10:00', '15:00'],
+    capacity: 80,
+    visitorCount: 50,
+    crowdLevel: 'moderate' as const,
+    enclosure: {
+      name: animal.name,
+      position: [47.7336, 7.3478],
+      radius: 20,
+    },
+  }));
