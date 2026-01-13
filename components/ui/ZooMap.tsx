@@ -259,16 +259,20 @@ export default function ZooMap({
   }, [handlePositionError, handlePositionSuccess, isGeoSupported, locationEnabled, onGeoError]);
 
   const handleRecenter = useCallback(() => {
-    const map = mapRef.current;
-    if (!map) {
-      return;
-    }
-
     const hasUserFix = Boolean(locationEnabled && userPosition);
-    const target = hasUserFix ? (userPosition as [number, number]) : FALLBACK_CENTER;
-    const targetZoom = hasUserFix ? Math.max(map.getZoom(), 17) : Math.max(map.getZoom(), 16);
+    const rawTarget = hasUserFix ? (userPosition as [number, number]) : FALLBACK_CENTER;
+    const target: [number, number] = [rawTarget[0], rawTarget[1]];
+    setInitialCenter(target);
 
-    map.setView(target, targetZoom, { animate: true, duration: 0.8 });
+    const map = mapRef.current;
+    if (map) {
+      const targetZoom = hasUserFix ? Math.max(map.getZoom(), 17) : Math.max(map.getZoom(), 16);
+      map.flyTo(target, targetZoom, {
+        animate: true,
+        duration: 0.8,
+        easeLinearity: 0.2,
+      });
+    }
 
     if (!hasUserFix && locationEnabled) {
       requestManualLocation();
@@ -285,6 +289,7 @@ export default function ZooMap({
     if (!locationEnabled) {
       setUserPosition(null);
       setUserAccuracy(null);
+      setInitialCenter(FALLBACK_CENTER);
       
       
       return;
