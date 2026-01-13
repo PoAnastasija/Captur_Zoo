@@ -92,11 +92,6 @@ const fallbackWeatherMeta = { label: 'Conditions variables', icon: Cloud, accent
 
 const getWeatherMeta = (code: number) => weatherMetaMap[code] ?? fallbackWeatherMeta;
 
-const ZOO_BOUNDS: [[number, number], [number, number]] = [
-  [47.7288, 7.3425],
-  [47.7349, 7.3528],
-];
-
 const EARTH_RADIUS_METERS = 6371000;
 const DEFAULT_PROXIMITY_RADIUS = 180;
 
@@ -1032,7 +1027,6 @@ export default function Home() {
             onAnimalClick={handleAnimalClick}
             onUserLocation={handleUserLocation}
             onGeoError={handleGeoError}
-            bounds={ZOO_BOUNDS}
             pois={pois}
             height={mapHeight}
             locationEnabled={locationOptIn}

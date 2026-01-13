@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
-import L, { LatLngBoundsExpression } from 'leaflet';
+import L from 'leaflet';
 // import 'leaflet/dist/leaflet.css';
 import { Animal, Poi } from '@/types/zoo';
 
@@ -78,7 +78,7 @@ const createPoiIcon = (category: Poi['category']) =>
     iconAnchor: [15, 34],
   });
 
-const ZOO_CENTER: [number, number] = [47.7325, 7.3496];
+const FALLBACK_CENTER: [number, number] = [47.734537, 7.350343];
 
 const GEO_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
@@ -142,23 +142,16 @@ interface ZooMapProps {
   onAnimalClick: (animal: Animal) => void;
   onUserLocation?: (position: [number, number]) => void;
   onGeoError?: (message: string) => void;
-  bounds?: LatLngBoundsExpression;
   pois?: Poi[];
   height?: number | string;
   locationEnabled?: boolean;
 }
-
-const defaultBounds: LatLngBoundsExpression = [
-  [47.7288, 7.3425],
-  [47.7349, 7.3528],
-];
 
 export default function ZooMap({
   animals,
   onAnimalClick,
   onUserLocation,
   onGeoError,
-  bounds,
   pois,
   height,
   locationEnabled = true,
@@ -169,15 +162,7 @@ export default function ZooMap({
   const [geoError, setGeoError] = useState<string | null>(
     () => (isGeoSupported ? null : GEO_UNSUPPORTED_MESSAGE)
   );
-  const [outOfBoundsNotice, setOutOfBoundsNotice] = useState<string | null>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const hasCenteredUserRef = useRef(false);
-  const mapBounds = useMemo(() => bounds ?? defaultBounds, [bounds]);
-  const fitMapToBounds = useCallback(() => {
-    if (mapRef.current) {
-      mapRef.current.fitBounds(mapBounds, { padding: [24, 24] });
-    }
-  }, [mapBounds]);
 
   const crowdStats = useMemo(() => {
     const totalCapacity = animals.reduce((sum, animal) => sum + animal.capacity, 0);
@@ -199,23 +184,6 @@ export default function ZooMap({
     return iconMap;
   }, [animals]);
 
-  const lockMapToUser = useCallback((shouldLock: boolean) => {
-    if (!mapRef.current) {
-      return;
-    }
-    if (shouldLock) {
-      mapRef.current.dragging.disable();
-      mapRef.current.scrollWheelZoom.disable();
-      mapRef.current.touchZoom.disable();
-      mapRef.current.doubleClickZoom.disable();
-    } else {
-      mapRef.current.dragging.enable();
-      mapRef.current.scrollWheelZoom.enable();
-      mapRef.current.touchZoom.enable();
-      mapRef.current.doubleClickZoom.enable();
-    }
-  }, []);
-
   const handlePositionSuccess = useCallback(
     (position: GeolocationPosition) => {
       const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
@@ -223,25 +191,8 @@ export default function ZooMap({
       setUserAccuracy(position.coords.accuracy);
       setGeoError(null);
       onUserLocation?.(coords);
-      const latLng = L.latLng(coords[0], coords[1]);
-      const boundsShape = L.latLngBounds(mapBounds);
-      const insidePark = boundsShape.contains(latLng);
-      setOutOfBoundsNotice(
-        insidePark
-          ? null
-          : "Tu es actuellement en dehors du zoo. Rejoins l'entree principale pour activer le suivi live."
-      );
-      lockMapToUser(insidePark);
-      if (mapRef.current) {
-        if (insidePark) {
-          mapRef.current.flyTo(coords, 18, { duration: 1 });
-          hasCenteredUserRef.current = true;
-        } else if (!hasCenteredUserRef.current) {
-          mapRef.current.flyTo(ZOO_CENTER, 16, { duration: 1 });
-        }
-      }
     },
-    [lockMapToUser, mapBounds, onUserLocation]
+    [onUserLocation]
   );
 
   const handlePositionError = useCallback(
@@ -306,8 +257,13 @@ export default function ZooMap({
   }, [handlePositionError, handlePositionSuccess, isGeoSupported, locationEnabled, lockMapToUser]);
 
   useEffect(() => {
-    fitMapToBounds();
-  }, [fitMapToBounds]);
+    if (!userPosition || !mapRef.current) {
+      return;
+    }
+    const map = mapRef.current;
+    const targetZoom = Math.max(map.getZoom(), 17);
+    map.flyTo(userPosition, targetZoom, { duration: 0.8 });
+  }, [userPosition]);
 
   return (
     <div
@@ -315,7 +271,7 @@ export default function ZooMap({
       style={{ height: height ?? '100%' }}
     >
       <MapContainer
-        center={ZOO_CENTER}
+        center={FALLBACK_CENTER}
         zoom={16}
         minZoom={15}
         maxZoom={18}
@@ -330,12 +286,8 @@ export default function ZooMap({
         className="h-full w-full"
         style={{ height: '100%' }}
         zoomControl
-        maxBounds={mapBounds}
-        maxBoundsViscosity={0.35}
-        bounds={mapBounds}
         whenCreated={(mapInstance) => {
           mapRef.current = mapInstance;
-          fitMapToBounds();
         }}
       >
         <TileLayer
@@ -475,13 +427,6 @@ export default function ZooMap({
           </>
         )}
       </MapContainer>
-
-      {outOfBoundsNotice && userPosition && (
-        <div className="absolute top-4 left-1/2 z-[1000] -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-xs font-semibold text-amber-600 shadow">
-          {outOfBoundsNotice}
-        </div>
-      )}
-
       {geoError && (
         <div className="absolute bottom-4 right-4 z-[1000] max-w-xs rounded-md bg-white/90 px-3 py-2 text-xs font-medium text-red-600 shadow">
           {geoError}
