@@ -1059,7 +1059,7 @@ export default function Home() {
   const mapHeight = `calc(100vh - ${mapReservedSpace}px)`;
 
   return (
-    <main ref={mainRef} className="relative flex min-h-screen w-full flex-col overflow-x-hidden pb-0">
+    <main ref={mainRef} className="relative flex min-h-screen w-full flex-col overflow-hidden pb-0">
       {/* Header */}
       <div
         ref={headerRef}
