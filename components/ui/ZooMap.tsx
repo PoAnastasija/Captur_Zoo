@@ -144,6 +144,7 @@ interface ZooMapProps {
   onGeoError?: (message: string) => void;
   bounds?: LatLngBoundsExpression;
   pois?: Poi[];
+  height?: number | string;
 }
 
 const defaultBounds: LatLngBoundsExpression = [
@@ -158,6 +159,7 @@ export default function ZooMap({
   onGeoError,
   bounds,
   pois,
+  height,
 }: ZooMapProps) {
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [userAccuracy, setUserAccuracy] = useState<number | null>(null);
@@ -292,12 +294,15 @@ export default function ZooMap({
   }, [fitMapToBounds]);
 
   return (
-    <div className="relative h-full w-full">
+    <div
+      className="relative w-full"
+      style={{ height: height ?? '100%' }}
+    >
       <MapContainer
         center={ZOO_CENTER}
         zoom={16}
         minZoom={15}
-        maxZoom={19}
+        maxZoom={18}
         zoomSnap={0.25}
         zoomDelta={0.5}
         scrollWheelZoom
@@ -307,7 +312,7 @@ export default function ZooMap({
         inertia
         inertiaDeceleration={3000}
         className="h-full w-full"
-        style={{ minHeight: 'calc(100vh - 110px)' }}
+        style={{ height: '100%' }}
         zoomControl
         maxBounds={mapBounds}
         maxBoundsViscosity={0.35}
@@ -320,6 +325,8 @@ export default function ZooMap({
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={18}
+          maxNativeZoom={18}
         />
 
         {animals.map((animal) => {

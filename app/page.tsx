@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { animals } from './data/animals';
 import { baseBadges } from './data/badges';
 import { pois } from './data/pois';
 import { baseNotifications } from './data/notifications';
@@ -139,7 +138,7 @@ const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
 export default function Home() {
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [mapAnimals, setMapAnimals] = useState<Animal[]>(animals);
+  const [mapAnimals, setMapAnimals] = useState<Animal[]>([]);
   const [badgePanelOpen, setBadgePanelOpen] = useState(false);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [photoGalleryOpen, setPhotoGalleryOpen] = useState(false);
@@ -164,9 +163,12 @@ export default function Home() {
   const lastGeoErrorRef = useRef<string | null>(null);
   const completedQuestsRef = useRef<Set<string>>(new Set());
   const deliveredProximityRef = useRef<Set<string>>(new Set());
+  const mainRef = useRef<HTMLElement | null>(null);
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
   const realtimeChannelRef = useRef<BroadcastChannel | null>(null);
   const clientIdRef = useRef<string>(`client-${Math.random().toString(36).slice(2)}`);
+  const [mapReservedSpace, setMapReservedSpace] = useState(180);
 
   const handleAnimalClick = (animal: Animal) => {
     setSelectedAnimal(animal);
@@ -632,7 +634,7 @@ export default function Home() {
     }
     setCapturedAnimalIds((prev) => [...prev, animalId]);
     const targetAnimal =
-      mapAnimals.find((animal) => animal.id === animalId) ?? animals.find((animal) => animal.id === animalId);
+      mapAnimals.find((animal) => animal.id === animalId);
     addNotification({
       title: targetAnimal ? `Photo capturée - ${targetAnimal.name}` : 'Photo capturée',
       body: targetAnimal
@@ -790,10 +792,46 @@ export default function Home() {
     }
   };
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const updateReservedSpace = () => {
+      const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0;
+      const sectionPadding = mapSectionRef.current
+        ? parseFloat(window.getComputedStyle(mapSectionRef.current).paddingBottom || '0')
+        : 0;
+      const mainPadding = mainRef.current
+        ? parseFloat(window.getComputedStyle(mainRef.current).paddingBottom || '0')
+        : 0;
+      setMapReservedSpace(Math.round(headerHeight + sectionPadding + mainPadding));
+    };
+
+    updateReservedSpace();
+    window.addEventListener('resize', updateReservedSpace);
+
+    let resizeObserver: ResizeObserver | undefined;
+    if (headerRef.current && 'ResizeObserver' in window) {
+      resizeObserver = new ResizeObserver(() => updateReservedSpace());
+      resizeObserver.observe(headerRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateReservedSpace);
+      resizeObserver?.disconnect();
+    };
+  }, []);
+
+  const mapHeight = `calc(100vh - ${mapReservedSpace}px)`;
+
   return (
-    <main className="relative flex min-h-screen w-full flex-col overflow-x-hidden pb-28">
+    <main ref={mainRef} className="relative flex min-h-screen w-full flex-col overflow-x-hidden pb-0">
       {/* Header */}
-      <div className="sticky top-0 z-[1100] border-b border-white/10 bg-gradient-to-r from-[#0d4f4a]/95 via-[#0e5d54]/95 to-[#127c63]/95 text-white shadow-lg backdrop-blur">
+      <div
+        ref={headerRef}
+        className="sticky top-0 z-[1100] border-b border-white/10 bg-gradient-to-r from-[#0d4f4a]/95 via-[#0e5d54]/95 to-[#127c63]/95 text-white shadow-lg backdrop-blur"
+      >
         <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
           <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow">🦁 Zoo de Mulhouse</h1>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -827,9 +865,10 @@ export default function Home() {
       {/* Carte */}
       <div
         ref={mapSectionRef}
-        className="relative flex-1 w-full min-h-[calc(100vh-140px)] pb-10"
+        className="relative flex-1 w-full"
+        style={{ height: mapHeight }}
       >
-        <div className="h-full w-full">
+        <div className="h-full w-full" style={{ height: mapHeight }}>
           <ZooMap
             animals={mapAnimals}
             onAnimalClick={handleAnimalClick}
@@ -837,6 +876,7 @@ export default function Home() {
             onGeoError={handleGeoError}
             bounds={ZOO_BOUNDS}
             pois={pois}
+            height={mapHeight}
           />
         </div>
       </div>
