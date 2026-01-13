@@ -3,37 +3,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { baseBadges } from './data/badges';
+import { baseAnimals } from './data/animals';
 import { pois } from './data/pois';
-import { baseNotifications } from './data/notifications';
-import {
-  Animal,
-  BadgeReward,
-  CaptureIntent,
-  CapturedPhoto,
-  CaptureStep,
-  CrowdLevel,
-  CrowdReportEntry,
-  ZooNotification,
-} from './types/zoo';
+import { Animal, BadgeReward, CaptureIntent, CapturedPhoto, CaptureStep, CrowdLevel, CrowdReportEntry, ZooNotification } from './types/zoo';
 import AnimalModal from '../components/ui/AnimalModal';
 import { ZoodexPanel } from '@/components/ui/BadgePanel';
-import { NotificationPanel } from '@/components/ui/NotificationPanel';
 import { PhotoGallery } from '@/components/ui/PhotoGallery';
 import { CrowdReportPanel } from '@/components/ui/CrowdReportPanel';
 import { ZooLogo } from '@/components/ui/ZooLogo';
 import { SettingsPanel } from '@/components/ui/SettingsPanel';
 import {
   AlertTriangle,
-  Bell,
   Camera,
   BookOpenCheck,
   Cloud,
   CloudLightning,
   CloudRain,
   CloudSun,
-  Medal,
   Navigation2,
-  Smartphone,
   Settings,
   Sun,
   Wind,
@@ -67,7 +54,7 @@ type WeatherState =
     }
   | { status: 'error' };
 
-type BottomNavAction = 'map' | 'photos' | 'zoodex' | 'alerts' | 'report' | 'settings';
+type BottomNavAction = 'map' | 'photos' | 'zoodex' | 'report' | 'settings';
 
 const weatherMetaMap: Record<number, { label: string; icon: LucideIcon; accent: string }> = {
   0: { label: 'Grand soleil', icon: Sun, accent: 'text-amber-600' },
@@ -97,9 +84,17 @@ const DEFAULT_PROXIMITY_RADIUS = 180;
 
 const CROWD_STORAGE_KEY = 'captur_zoo_crowd_reports';
 const PHOTOS_STORAGE_KEY = 'captur_zoo_photos';
+const VISITED_ENCLOSURES_STORAGE_KEY = 'captur_zoo_visited_enclosures';
+const ENCLOSURE_COOLDOWN_MS = 5 * 60 * 1000;
 const captureStepLabel: Record<CaptureStep, string> = {
   enclosure: 'panneau',
   animal: 'animal',
+};
+const categoryEmoji: Record<Animal['category'], string> = {
+  mammal: '🦁',
+  bird: '🦩',
+  reptile: '🐊',
+  amphibian: '🐸',
 };
 
 const toRadians = (value: number) => (value * Math.PI) / 180;
@@ -146,18 +141,18 @@ const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
 export default function Home() {
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [mapAnimals, setMapAnimals] = useState<Animal[]>([]);
+  const [mapAnimals, setMapAnimals] = useState<Animal[]>(baseAnimals);
   const [zoodexOpen, setZoodexOpen] = useState(false);
-  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [photoGalleryOpen, setPhotoGalleryOpen] = useState(false);
   const [crowdReportOpen, setCrowdReportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [badges, setBadges] = useState(baseBadges);
-  const [notifications, setNotifications] = useState<ZooNotification[]>(baseNotifications);
+  const [notifications, setNotifications] = useState<ZooNotification[]>([]);
   const [crowdReports, setCrowdReports] = useState<CrowdReportEntry[]>([]);
   const [visitedAnimalIds, setVisitedAnimalIds] = useState<string[]>([]);
   const [capturedAnimalIds, setCapturedAnimalIds] = useState<string[]>([]);
   const [capturedEnclosureIds, setCapturedEnclosureIds] = useState<string[]>([]);
+  const [visitedEnclosureIds, setVisitedEnclosureIds] = useState<string[]>([]);
   const [userLocated, setUserLocated] = useState(false);
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [weatherState, setWeatherState] = useState<WeatherState>({ status: 'loading' });
@@ -168,9 +163,11 @@ export default function Home() {
   const [locationOptIn, setLocationOptIn] = useState(true);
   const [cameraAccessEnabled, setCameraAccessEnabled] = useState(true);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
+  const [recentEnclosureId, setRecentEnclosureId] = useState<string | null>(null);
   const highCrowdZonesRef = useRef<Set<string>>(new Set());
   const lastGeoErrorRef = useRef<string | null>(null);
   const deliveredProximityRef = useRef<Set<string>>(new Set());
+  const enclosureCooldownRef = useRef<Map<string, number>>(new Map());
   const mainRef = useRef<HTMLElement | null>(null);
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
@@ -238,8 +235,6 @@ export default function Home() {
     },
     []
   );
-
-  const unreadCount = notifications.filter((notification) => notification.unread).length;
 
   const unlockBadge = useCallback((badgeId: string) => {
     let unlockedBadge: BadgeReward | null = null;
@@ -363,8 +358,38 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const storedVisited = window.localStorage.getItem(VISITED_ENCLOSURES_STORAGE_KEY);
+      if (storedVisited) {
+        const parsed = JSON.parse(storedVisited) as string[];
+        if (Array.isArray(parsed)) {
+          setVisitedEnclosureIds(parsed);
+        }
+      }
+    } catch (error) {
+      console.warn('Impossible de charger les enclos visités', error);
+    }
+  }, []);
+
+
+  useEffect(() => {
     persistCrowdReports(crowdReports);
   }, [crowdReports, persistCrowdReports]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(VISITED_ENCLOSURES_STORAGE_KEY, JSON.stringify(visitedEnclosureIds));
+    } catch (error) {
+      console.warn('Impossible de sauvegarder les enclos visités', error);
+    }
+  }, [visitedEnclosureIds]);
+
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -440,30 +465,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const readCount = notifications.filter((notification) => !notification.unread).length;
-    if (readCount >= 5) {
-      unlockBadge('insider');
-    }
-  }, [notifications, unlockBadge]);
-
-  useEffect(() => {
     if (userLocated) {
       unlockBadge('navigator');
     }
   }, [userLocated, unlockBadge]);
-
-
-  const handleMarkAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        notification.id === id ? { ...notification, unread: false } : notification
-      )
-    );
-  };
-
-  const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((notification) => ({ ...notification, unread: false })));
-  };
 
   const handleUserLocation = useCallback(
     (coords: [number, number]) => {
@@ -497,6 +502,55 @@ export default function Home() {
     },
     [addNotification]
   );
+
+  const triggerEnclosureVisit = useCallback(
+    (animal: Animal) => {
+      setVisitedEnclosureIds((prev) => (prev.includes(animal.id) ? prev : [...prev, animal.id]));
+      setRecentEnclosureId(animal.id);
+      setTimeout(() => {
+        setRecentEnclosureId((current) => (current === animal.id ? null : current));
+      }, 4000);
+      addNotification({
+        title: `${categoryEmoji[animal.category]} Enclos détecté - ${animal.name}`,
+        body: `${animal.enclosure.name} · Scanne le panneau officiel puis capture l’animal pour valider cette rencontre.`,
+        type: 'event',
+        location: {
+          coords: animal.enclosure.position,
+          radiusMeters: animal.enclosure.radius,
+        },
+      });
+    },
+    [addNotification]
+  );
+
+  const checkEnclosureProximity = useCallback(
+    (coords: [number, number]) => {
+      if (!locationOptIn) {
+        return;
+      }
+      const now = Date.now();
+      mapAnimals.forEach((animal) => {
+        const distance = getDistanceMeters(coords, animal.enclosure.position);
+        if (distance > animal.enclosure.radius) {
+          return;
+        }
+        const lastTrigger = enclosureCooldownRef.current.get(animal.id) ?? 0;
+        if (now - lastTrigger < ENCLOSURE_COOLDOWN_MS) {
+          return;
+        }
+        enclosureCooldownRef.current.set(animal.id, now);
+        triggerEnclosureVisit(animal);
+      });
+    },
+    [locationOptIn, mapAnimals, triggerEnclosureVisit]
+  );
+
+  useEffect(() => {
+    if (!userPosition) {
+      return;
+    }
+    checkEnclosureProximity(userPosition);
+  }, [userPosition, checkEnclosureProximity]);
 
   const fetchWeather = useCallback(async () => {
     try {
@@ -857,15 +911,20 @@ export default function Home() {
     [addNotification]
   );
 
-  const closeAllPanels = () => {
+  const closeAllPanels = useCallback(() => {
     setZoodexOpen(false);
-    setNotificationPanelOpen(false);
     setPhotoGalleryOpen(false);
     setCrowdReportOpen(false);
     setSettingsOpen(false);
-  };
+  }, []);
 
   const resetNavToMap = useCallback(() => setActiveNav('map'), []);
+
+  const handleRequestCaptureFromModal = useCallback(() => {
+    closeAllPanels();
+    setPhotoGalleryOpen(true);
+    setActiveNav('photos');
+  }, [closeAllPanels]);
 
   const handleReturnToMap = useCallback(() => {
     setSettingsOpen(false);
@@ -908,10 +967,34 @@ export default function Home() {
     { id: 'map', label: 'Carte', icon: Navigation2, action: 'map' },
     { id: 'photos', label: 'Photos', icon: Camera, action: 'photos' },
     { id: 'zoodex', label: 'Zoodex', icon: BookOpenCheck, action: 'zoodex' },
-    { id: 'alerts', label: 'Actus', icon: Bell, action: 'alerts' },
     { id: 'report', label: 'Signaler', icon: AlertTriangle, action: 'report' },
     { id: 'settings', label: 'Réglages', icon: Settings, action: 'settings' },
   ];
+
+  const navItemsExcludingPhotos = bottomNavItems.filter((item) => item.action !== 'photos');
+  const midpoint = Math.ceil(navItemsExcludingPhotos.length / 2);
+  const leftNavItems = navItemsExcludingPhotos.slice(0, midpoint);
+  const rightNavItems = navItemsExcludingPhotos.slice(midpoint);
+
+  const renderBottomNavButton = (item: (typeof bottomNavItems)[number]) => {
+    const isActive = activeNav === item.action;
+    return (
+      <button
+        key={item.id}
+        type="button"
+        className={`flex flex-1 flex-col items-center gap-1 rounded-2xl px-2 py-1 text-center transition ${
+          isActive
+            ? 'bg-[#0d4f4a] text-white shadow-lg shadow-[#0d4f4a]/30'
+            : 'text-[#7a6f60] hover:bg-white/60'
+        }`}
+        aria-pressed={isActive}
+        onClick={() => handleBottomNav(item.action)}
+      >
+        <item.icon className="h-4 w-4" />
+        <span>{item.label}</span>
+      </button>
+    );
+  };
 
   const handleBottomNav = (action: BottomNavAction) => {
     if (action === 'map') {
@@ -930,9 +1013,6 @@ export default function Home() {
         break;
       case 'zoodex':
         setZoodexOpen(true);
-        break;
-      case 'alerts':
-        setNotificationPanelOpen(true);
         break;
       case 'report':
         setCrowdReportOpen(true);
@@ -990,28 +1070,7 @@ export default function Home() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/90 px-4 py-1.5 text-xs font-medium text-[#1f2c27] shadow-md">
               {weatherChip}
-              {unreadCount > 0 && (
-                <span className="rounded-full bg-[#c4473d] px-2 py-0.5 text-[10px] font-semibold text-white">
-                  +{unreadCount}
-                </span>
-              )}
             </div>
-            <button
-              type="button"
-              aria-pressed={proximityAlertsEnabled && notificationPermission === 'granted'}
-              disabled={proximityAlertsEnabled && notificationPermission === 'granted'}
-              onClick={handleEnableProximityAlerts}
-              className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-1.5 text-xs font-semibold tracking-wide transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#fdd27c] ${
-                proximityAlertsEnabled && notificationPermission === 'granted'
-                  ? 'border-transparent bg-[#7fba39] text-[#0b2a1a] shadow-lg shadow-[#0b2a1a]/30'
-                  : 'border-white/40 text-white/90 hover:bg-white/10'
-              }`}
-            >
-              <Smartphone className="h-4 w-4" />
-              {proximityAlertsEnabled && notificationPermission === 'granted'
-                ? 'Alertes proximité actives'
-                : 'Activer alertes proximité'}
-            </button>
           </div>
         </div>
       </div>
@@ -1030,6 +1089,8 @@ export default function Home() {
             pois={pois}
             height={mapHeight}
             locationEnabled={locationOptIn}
+            visitedEnclosures={visitedEnclosureIds}
+            activeEnclosureId={recentEnclosureId}
           />
         </div>
       </div>
@@ -1039,6 +1100,7 @@ export default function Home() {
         animal={selectedAnimal}
         open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        onRequestCapture={handleRequestCaptureFromModal}
       />
 
       <ZoodexPanel
@@ -1053,17 +1115,6 @@ export default function Home() {
           setZoodexOpen(false);
           resetNavToMap();
         }}
-      />
-      <NotificationPanel
-        notifications={notifications}
-        crowdReports={crowdReports}
-        open={notificationPanelOpen}
-        onClose={() => {
-          setNotificationPanelOpen(false);
-          resetNavToMap();
-        }}
-        onMarkAsRead={handleMarkAsRead}
-        onMarkAllRead={handleMarkAllRead}
       />
       <PhotoGallery
         animals={mapAnimals}
@@ -1103,7 +1154,6 @@ export default function Home() {
         cameraEnabled={cameraAccessEnabled}
         onToggleCamera={handleToggleCamera}
       />
-
       {badgeToast && (
         <div className="pointer-events-none fixed inset-x-0 top-28 z-[1500] flex justify-center px-4">
           <div className="badge-pop w-full max-w-sm rounded-3xl border border-[#f4d9a7] bg-[#fff9f0]/95 p-5 text-center shadow-2xl">
@@ -1120,27 +1170,27 @@ export default function Home() {
       )}
 
       {/* Bottom navigation */}
-      <div className="fixed bottom-4 left-1/2 z-[1200] w-[94%] max-w-2xl -translate-x-1/2 rounded-3xl border border-[#f4dcb2] bg-gradient-to-r from-[#fff8ec]/95 via-[#fef1d6]/95 to-[#ffe8bd]/95 px-3 py-2 shadow-[0_20px_45px_rgba(13,79,74,0.25)] backdrop-blur">
-        <div className="flex items-stretch gap-1 text-[10px] font-semibold">
-          {bottomNavItems.map((item) => {
-            const isActive = activeNav === item.action;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`flex flex-1 flex-col items-center gap-1 rounded-2xl px-2 py-1 text-center transition ${
-                  isActive
-                    ? 'bg-[#0d4f4a] text-white shadow-lg shadow-[#0d4f4a]/30'
-                    : 'text-[#7a6f60] hover:bg-white/60'
-                }`}
-                aria-pressed={isActive}
-                onClick={() => handleBottomNav(item.action)}
-              >
-                <item.icon className="h-4 w-4" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+      <div className="fixed bottom-4 left-1/2 z-[1200] w-[94%] max-w-2xl -translate-x-1/2 rounded-3xl border border-[#f4dcb2] bg-gradient-to-r from-[#fff8ec]/95 via-[#fef1d6]/95 to-[#ffe8bd]/95 px-3 py-3 shadow-[0_20px_45px_rgba(13,79,74,0.25)] backdrop-blur">
+        <div className="relative">
+          <div className="flex items-stretch gap-3 text-[10px] font-semibold">
+            {leftNavItems.map((item) => renderBottomNavButton(item))}
+            <div className="pointer-events-none w-14 shrink-0 sm:w-20" aria-hidden />
+            {rightNavItems.map((item) => renderBottomNavButton(item))}
+          </div>
+          <button
+            type="button"
+            className={`absolute left-1/2 top-0 flex -translate-x-1/2 -translate-y-8 flex-col items-center rounded-full border-4 border-white px-5 py-3 text-center shadow-[0_15px_40px_rgba(90,42,0,0.45)] transition ${
+              activeNav === 'photos'
+                ? 'bg-gradient-to-b from-[#ffe052] to-[#ffa930] text-[#4a2400]'
+                : 'bg-gradient-to-b from-[#fff0ae] to-[#ffc970] text-[#6d3603] hover:-translate-y-9'
+            }`}
+            aria-label="Ouvrir la galerie photo"
+            aria-pressed={activeNav === 'photos'}
+            onClick={() => handleBottomNav('photos')}
+          >
+            <Camera className="h-7 w-7" />
+            <span className="mt-1 text-[11px] font-black uppercase tracking-wide">Photos</span>
+          </button>
         </div>
       </div>
     </main>

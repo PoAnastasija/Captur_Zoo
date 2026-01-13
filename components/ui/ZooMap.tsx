@@ -44,6 +44,8 @@ const poiGlyphs: Record<Poi['category'], string> = {
   other: '⭐️',
 };
 
+const poiCategories: Poi['category'][] = ['animals', 'plants', 'practical', 'other'];
+
 const KM0_LIVE_HUB_ID = 'km0-live-hub';
 
 const createPoiIcon = (category: Poi['category']) =>
@@ -111,31 +113,33 @@ const userLocationIcon = L.divIcon({
   iconAnchor: [17, 26],
 });
 
-const crowdLevelColor: Record<Animal['crowdLevel'], { fill: string; border: string; glyph: string }> = {
-  low: { fill: '#d1fae5', border: '#059669', glyph: '🟢' },
-  moderate: { fill: '#fef3c7', border: '#d97706', glyph: '🟠' },
-  high: { fill: '#fee2e2', border: '#dc2626', glyph: '🔴' },
+const animalCategoryMeta: Record<Animal['category'], { gradient: string; border: string; label: string }> = {
+  mammal: { gradient: 'linear-gradient(135deg,#fcd9b6,#f5a25c)', border: '#b45309', label: 'MAM' },
+  bird: { gradient: 'linear-gradient(135deg,#fde1f2,#f472b6)', border: '#be185d', label: 'OIS' },
+  reptile: { gradient: 'linear-gradient(135deg,#e0f2fe,#38bdf8)', border: '#0369a1', label: 'REP' },
+  amphibian: { gradient: 'linear-gradient(135deg,#d1fae5,#34d399)', border: '#047857', label: 'AMP' },
 };
 
-const createAnimalIcon = (animal: Animal) => {
-    const crowdMeta = crowdLevelColor[animal.crowdLevel];
-    const occupancy = Math.round((animal.visitorCount / animal.capacity) * 100);
-    return L.divIcon({
-      className: 'animal-pin',
-      html: `
-        <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:14px;background:${crowdMeta.fill};border:2px solid ${crowdMeta.border};box-shadow:0 6px 12px rgba(0,0,0,0.25);font-size:16px;line-height:1;">
-            ${crowdMeta.glyph}
-          </span>
-          <span style="padding:2px 6px;border-radius:9999px;background:#111827;color:#fff;font-size:10px;font-weight:600;">${occupancy}%</span>
-        </div>
-      `,
-      iconSize: [40, 48],
-      iconAnchor: [20, 40],
-    });
-  };
+
 
 const GEO_UNSUPPORTED_MESSAGE = "La géolocalisation n'est pas supportée par ce navigateur.";
+
+const createEnclosureBadgeIcon = (animal: Animal) =>
+  L.divIcon({
+    className: 'enclosure-badge-marker',
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;transform:translateY(-10px);">
+        <div style="background:linear-gradient(135deg,#ffb347,#ffcc33);color:#512002;font-weight:700;padding:6px 14px;border-radius:9999px;border:2px solid rgba(255,255,255,0.9);box-shadow:0 10px 20px rgba(0,0,0,0.25);text-transform:uppercase;font-size:11px;letter-spacing:0.08em;">
+          Capture prête
+        </div>
+        <div style="background:#fff;border-radius:14px;padding:6px 10px;font-size:11px;font-weight:600;color:#1f2a24;box-shadow:0 8px 16px rgba(0,0,0,0.2);">
+          ${animal.name}
+        </div>
+      </div>
+    `,
+    iconSize: [120, 80],
+    iconAnchor: [60, 70],
+  });
 
 interface ZooMapProps {
   animals: Animal[];
@@ -145,6 +149,8 @@ interface ZooMapProps {
   pois?: Poi[];
   height?: number | string;
   locationEnabled?: boolean;
+  visitedEnclosures?: string[];
+  activeEnclosureId?: string | null;
 }
 
 export default function ZooMap({
@@ -155,6 +161,8 @@ export default function ZooMap({
   pois,
   height,
   locationEnabled = true,
+  visitedEnclosures,
+  activeEnclosureId,
 }: ZooMapProps) {
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [userAccuracy, setUserAccuracy] = useState<number | null>(null);
@@ -162,28 +170,49 @@ export default function ZooMap({
   const [geoError, setGeoError] = useState<string | null>(
     () => (isGeoSupported ? null : GEO_UNSUPPORTED_MESSAGE)
   );
-  const mapRef = useRef<L.Map | null>(null);
+  const [poiFilters, setPoiFilters] = useState<Record<Poi['category'], boolean>>(() =>
+    poiCategories.reduce(
+      (acc, category) => {
+        acc[category] = true;
+        return acc;
+      },
+      {} as Record<Poi['category'], boolean>
+    )
+  );
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [initialCenter, setInitialCenter] = useState<[number, number]>(FALLBACK_CENTER);
+  const mapRef = useRef<L.Map | null>(null);
 
-  const crowdStats = useMemo(() => {
-    const totalCapacity = animals.reduce((sum, animal) => sum + animal.capacity, 0);
-    const totalVisitors = animals.reduce((sum, animal) => sum + animal.visitorCount, 0);
-    const saturatedZones = animals.filter((animal) => animal.crowdLevel === 'high').length;
-    return {
-      visitors: totalVisitors,
-      capacity: totalCapacity,
-      occupancy: totalCapacity ? Math.round((totalVisitors / totalCapacity) * 100) : 0,
-      saturatedZones,
-    };
-  }, [animals]);
 
-  const animalIcons = useMemo(() => {
-    const iconMap = new Map<string, L.DivIcon>();
-    animals.forEach((animal) => {
-      iconMap.set(animal.id, createAnimalIcon(animal));
-    });
-    return iconMap;
-  }, [animals]);
+
+  const visitedSet = useMemo(() => new Set(visitedEnclosures ?? []), [visitedEnclosures]);
+  const filteredPois = useMemo(() => {
+    if (!pois || pois.length === 0) {
+      return [] as Poi[];
+    }
+    return pois.filter((poi) => poi.id !== KM0_LIVE_HUB_ID && poiFilters[poi.category]);
+  }, [pois, poiFilters]);
+  const activeFilterCount = useMemo(
+    () => poiCategories.reduce((count, category) => (poiFilters[category] ? count + 1 : count), 0),
+    [poiFilters]
+  );
+
+  const handlePoiFilterToggle = useCallback((category: Poi['category']) => {
+    setPoiFilters((prev) => ({
+      ...prev,
+      [category]: !prev[category],
+    }));
+  }, []);
+
+  const toggleFilterMenu = useCallback(() => {
+    setFilterMenuOpen((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    if (!pois || pois.length === 0) {
+      setFilterMenuOpen(false);
+    }
+  }, [pois]);
 
   const handlePositionSuccess = useCallback(
     (position: GeolocationPosition) => {
@@ -229,6 +258,24 @@ export default function ZooMap({
     navigator.geolocation.getCurrentPosition(handlePositionSuccess, handlePositionError, GEO_OPTIONS);
   }, [handlePositionError, handlePositionSuccess, isGeoSupported, locationEnabled, onGeoError]);
 
+  const handleRecenter = useCallback(() => {
+    const map = mapRef.current;
+
+    if (map && locationEnabled && userPosition) {
+      const targetZoom = Math.max(map.getZoom(), 17);
+      map.flyTo(userPosition, targetZoom, { duration: 0.8 });
+      return;
+    }
+
+    if (locationEnabled) {
+      requestManualLocation();
+    }
+
+    if (map) {
+      map.flyTo(FALLBACK_CENTER, 16, { duration: 0.8 });
+    }
+  }, [locationEnabled, requestManualLocation, userPosition]);
+
   useEffect(() => {
     if (!isGeoSupported) {
       onGeoError?.(GEO_UNSUPPORTED_MESSAGE);
@@ -239,6 +286,8 @@ export default function ZooMap({
     if (!locationEnabled) {
       setUserPosition(null);
       setUserAccuracy(null);
+      
+      
       return;
     }
 
@@ -300,103 +349,84 @@ export default function ZooMap({
           maxNativeZoom={18}
         />
 
+        
+
         {animals.map((animal) => {
-          const icon = animalIcons.get(animal.id) ?? createAnimalIcon(animal);
+          if (!visitedSet.has(animal.id)) {
+            return null;
+          }
           return (
-            <Marker
-              key={animal.id}
-              position={animal.position}
-              icon={icon}
-              eventHandlers={{
-                click: () => onAnimalClick(animal),
+            <Circle
+              key={`${animal.id}-enclosure`}
+              center={animal.enclosure.position}
+              radius={animal.enclosure.radius}
+              pathOptions={{
+                color: '#0f9d58',
+                fillColor: '#0f9d58',
+                fillOpacity: 0.12,
+                dashArray: '8 8',
               }}
-            >
-              <Popup>
-                <div className="space-y-1 text-sm">
-                  <p className="text-xs uppercase tracking-wider text-gray-400">{animal.zoneName}</p>
-                  <h3 className="text-base font-semibold text-gray-900">{animal.name}</h3>
-                  <p className="text-xs text-gray-500">{animal.species}</p>
-                  <p className="text-xs text-gray-600">
-                    {animal.visitorCount} / {animal.capacity} visiteurs · Affluence {animal.crowdLevel === 'high'
-                      ? 'élevée'
-                      : animal.crowdLevel === 'moderate'
-                      ? 'soutenue'
-                      : 'fluide'}
-                  </p>
-                  <button
-                    type="button"
-                    className="mt-2 inline-flex rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 transition hover:border-gray-300"
-                    onClick={() => onAnimalClick(animal)}
-                  >
-                    Voir la fiche
-                  </button>
-                </div>
-              </Popup>
-            </Marker>
+            />
           );
         })}
 
-        {pois?.map((poi) => {
-          const isLiveHub = poi.id === KM0_LIVE_HUB_ID;
-          return (
-            <Marker
-              key={`poi-${poi.id}`}
-              position={[poi.latitude, poi.longitude]}
-              icon={createPoiIcon(poi.category)}
-            >
-              <Popup>
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-gray-900">{poi.name}</h3>
-                  </div>
-                  {isLiveHub ? (
-                    <div className="space-y-3 text-gray-900">
-                      <div className="rounded-2xl bg-slate-900 px-4 py-3 text-white">
-                        <p className="text-[11px] uppercase tracking-[0.35em] text-emerald-300">Live</p>
-                        <p className="text-3xl font-bold">{crowdStats.visitors}</p>
-                        <p className="text-xs text-slate-300">visiteurs connectes</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="rounded-xl bg-emerald-50 p-3 text-center">
-                          <p className="text-lg font-semibold text-emerald-700">{crowdStats.occupancy}%</p>
-                          <p>parc occupe</p>
-                        </div>
-                        <div className="rounded-xl bg-amber-50 p-3 text-center">
-                          <p className="text-lg font-semibold text-amber-700">{crowdStats.saturatedZones}</p>
-                          <p>zones critiques</p>
-                        </div>
-                      </div>
-                      <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">
-                        Derniere mise a jour {new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      {poi.imageUrl && (
-                        <img
-                          src={poi.imageUrl}
-                          alt={poi.name}
-                          className="h-32 w-full rounded-md object-cover"
-                          loading="lazy"
-                        />
-                      )}
-                        {poi.linkUrl && (
-                          <a
-                            href={poi.linkUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:underline"
-                          >
-                            Plus d’informations ↗
-                          </a>
-                        )}
-                    </>
-                  )}
+        {activeEnclosureId &&
+          animals
+            .filter((animal) => animal.id === activeEnclosureId)
+            .map((animal) => (
+              <Marker
+                key={`${animal.id}-badge`}
+                position={animal.enclosure.position}
+                icon={createEnclosureBadgeIcon(animal)}
+                interactive={false}
+              />
+            ))}
+
+        {filteredPois.map((poi) => (
+          <Marker
+            key={`poi-${poi.id}`}
+            position={[poi.latitude, poi.longitude]}
+            icon={createPoiIcon(poi.category)}
+          >
+            <Popup>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-gray-900">{poi.name}</h3>
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+                    style={{ backgroundColor: poiColors[poi.category] }}
+                  >
+                    {poiLabels[poi.category]}
+                  </span>
                 </div>
-              </Popup>
-            </Marker>
-          );
-        })}
+                {poi.imageUrl && (
+                  <img
+                    src={poi.imageUrl}
+                    alt={poi.name}
+                    className="h-32 w-full rounded-md object-cover"
+                    loading="lazy"
+                  />
+                )}
+                {poi.description && (
+                  <div
+                    className="space-y-2 text-xs text-gray-600"
+                    dangerouslySetInnerHTML={{ __html: poi.description }}
+                  />
+                )}
+                {poi.linkUrl && (
+                  <a
+                    href={poi.linkUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:underline"
+                  >
+                    Plus d’informations ↗
+                  </a>
+                )}
+              </div>
+            </Popup>
+          </Marker>
+        ))}
 
         {userPosition && (
           <>
@@ -418,6 +448,56 @@ export default function ZooMap({
           </>
         )}
       </MapContainer>
+      {pois && pois.length > 0 && (
+        <div className="pointer-events-none absolute right-4 top-4 z-[1000] flex flex-col items-end gap-2">
+          <button
+            type="button"
+            className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/95 px-4 py-2 text-sm font-semibold text-slate-900 shadow"
+            onClick={toggleFilterMenu}
+            aria-expanded={filterMenuOpen}
+          >
+            <span aria-hidden>🎯</span>
+            <span>Filtres</span>
+            <span className="text-xs text-slate-500">{activeFilterCount}/{poiCategories.length}</span>
+          </button>
+          {filterMenuOpen && (
+            <div className="pointer-events-auto rounded-2xl border border-white/70 bg-white/95 p-3 text-sm text-slate-800 shadow-xl">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400">Points d’intérêt</p>
+              <div className="mt-2 space-y-2">
+                {poiCategories.map((category) => {
+                  const active = poiFilters[category];
+                  return (
+                    <button
+                      key={category}
+                      type="button"
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold ${
+                        active ? 'bg-[#0d4f4a] text-white' : 'bg-slate-100 text-slate-600'
+                      }`}
+                      onClick={() => handlePoiFilterToggle(category)}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span aria-hidden>{poiGlyphs[category]}</span>
+                        {poiLabels[category]}
+                      </span>
+                      <span className="text-xs uppercase tracking-wide">{active ? 'On' : 'Off'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="pointer-events-none absolute bottom-28 right-4 z-[1000]">
+        <button
+          type="button"
+          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/70 bg-white px-4 py-2 text-sm font-semibold text-[#0d4f4a] shadow transition hover:bg-white/90"
+          onClick={handleRecenter}
+        >
+          <span aria-hidden>📍</span>
+          Recentrer
+        </button>
+      </div>
       {geoError && (
         <div className="absolute bottom-4 right-4 z-[1000] max-w-xs rounded-md bg-white/90 px-3 py-2 text-xs font-medium text-red-600 shadow">
           {geoError}

@@ -1,6 +1,11 @@
 export type PoiCategory = 'animals' | 'plants' | 'practical' | 'other';
 export type CrowdLevel = 'low' | 'moderate' | 'high';
 export type CaptureStep = 'enclosure' | 'animal';
+export interface AnimalEnclosure {
+  name: string;
+  position: [number, number];
+  radius: number;
+}
 
 export interface Animal {
   id: string;
@@ -17,6 +22,7 @@ export interface Animal {
   capacity: number;
   visitorCount: number;
   crowdLevel: CrowdLevel;
+  enclosure: AnimalEnclosure;
 }
 
 export interface Poi {

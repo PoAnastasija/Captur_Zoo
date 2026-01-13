@@ -12,7 +12,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 
 interface PhotoGalleryProps {
   animals: Animal[];
@@ -78,6 +77,9 @@ export function PhotoGallery({
 
   const enclosureSet = useMemo(() => new Set(capturedEnclosures), [capturedEnclosures]);
   const animalSet = useMemo(() => new Set(capturedAnimals), [capturedAnimals]);
+  const totalAnimals = uniqueAnimals.length;
+  const panelCount = enclosureSet.size;
+  const animalCount = animalSet.size;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -107,6 +109,9 @@ export function PhotoGallery({
               Choisis le résident puis suis les deux étapes : panneau d’abord, animal ensuite. Chaque capture se sauvegarde dans
               ton Zoodex et sur ton appareil.
             </p>
+            <p className="mt-1 text-[10px] uppercase tracking-wide text-[#b08a62]">
+              L’appareil photo natif est utilisé et le cliché est enregistré automatiquement dans ta galerie.
+            </p>
             <input
               ref={fileInputRef}
               type="file"
@@ -116,6 +121,18 @@ export function PhotoGallery({
               disabled={!cameraEnabled}
               onChange={handleFileChange}
             />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-[#f4e6cf] bg-white/70 px-4 py-3 text-sm text-[#5a3416] shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#c47b1b]">Étape 1 · Panneau</p>
+                <p className="mt-1 text-lg font-bold text-[#1f2a24]">{panelCount}/{totalAnimals} validés</p>
+                <p className="text-xs text-[#6c5a46]">Scanne le panneau officiel pour déverrouiller la prise de vue.</p>
+              </div>
+              <div className="rounded-2xl border border-[#d7efda] bg-white/80 px-4 py-3 text-sm text-[#0d3b28] shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#0d7c55]">Étape 2 · Animal</p>
+                <p className="mt-1 text-lg font-bold text-[#0f2b1c]">{animalCount}/{totalAnimals} capturés</p>
+                <p className="text-xs text-[#1f4b33]">Immortalise l’habitant après validation du panneau.</p>
+              </div>
+            </div>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 sm:px-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -171,32 +188,55 @@ export function PhotoGallery({
                           Animal
                         </span>
                       </div>
-                      <div className="space-y-2 rounded-2xl border border-[#f3e3c6] bg-[#fff8ec] p-3">
-                        <p className="text-xs font-semibold text-[#a6611b]">Étape 1 · Panneau</p>
-                        <p className="text-xs text-[#715a3b]">Immortalise le panneau officiel de l’enclos pour débloquer la capture.</p>
-                        <Button
-                          className="w-full"
-                          variant="secondary"
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
                           disabled={!cameraEnabled || enclosureCaptured}
                           onClick={() => handleManualCapture({ step: 'enclosure', animalId: animal.id })}
+                          className={`group/button w-full rounded-2xl border border-[#f3e3c6] bg-[#fff8ec] p-4 text-left shadow-sm transition ${
+                            !cameraEnabled || enclosureCaptured ? 'cursor-not-allowed opacity-70' : 'hover:-translate-y-0.5 hover:shadow-lg'
+                          }`}
                         >
-                          {enclosureCaptured ? 'Panneau validé' : cameraEnabled ? 'Scanner le panneau' : 'Caméra désactivée'}
-                        </Button>
-                      </div>
-                      <div className="space-y-2 rounded-2xl border border-[#d0e7cf] bg-[#f2fff4] p-3">
-                        <p className="text-xs font-semibold text-[#0d5c3a]">Étape 2 · Animal</p>
-                        <p className="text-xs text-[#1f3b2a]">
-                          {enclosureCaptured
-                            ? 'Capture l’animal pour compléter cette rencontre.'
-                            : 'Étape verrouillée tant que le panneau n’est pas scanné.'}
-                        </p>
-                        <Button
-                          className="w-full"
+                          <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-[#a6611b]">
+                            <span>Étape 1 · Panneau</span>
+                            {enclosureCaptured ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                          </div>
+                          <p className="mt-2 text-xs text-[#715a3b]">
+                            Immortalise le panneau officiel pour débloquer la capture.
+                          </p>
+                          <div className="mt-3 rounded-xl bg-white/80 px-3 py-2 text-sm font-semibold text-[#5a3516]">
+                            {enclosureCaptured ? 'Panneau validé' : cameraEnabled ? 'Scanner le panneau' : 'Caméra désactivée'}
+                          </div>
+                        </button>
+                        <button
+                          type="button"
                           disabled={!cameraEnabled || !enclosureCaptured || animalCaptured}
                           onClick={() => handleManualCapture({ step: 'animal', animalId: animal.id })}
+                          className={`w-full rounded-2xl border border-[#d0e7cf] bg-[#f2fff4] p-4 text-left shadow-sm transition ${
+                            !cameraEnabled || !enclosureCaptured || animalCaptured
+                              ? 'cursor-not-allowed opacity-60'
+                              : 'hover:-translate-y-0.5 hover:shadow-lg'
+                          }`}
                         >
-                          {!enclosureCaptured ? 'Panneau requis' : animalCaptured ? 'Déjà validé' : 'Capturer cet animal'}
-                        </Button>
+                          <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-[#0d5c3a]">
+                            <span>Étape 2 · Animal</span>
+                            {animalCaptured ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                          </div>
+                          <p className="mt-2 text-xs text-[#1f3b2a]">
+                            {enclosureCaptured
+                              ? 'Capture l’animal pour compléter cette rencontre.'
+                              : 'Étape verrouillée tant que le panneau n’est pas scanné.'}
+                          </p>
+                          <div className="mt-3 rounded-xl bg-white/90 px-3 py-2 text-sm font-semibold text-[#103622]">
+                            {!enclosureCaptured
+                              ? 'Panneau requis'
+                              : animalCaptured
+                              ? 'Déjà validé'
+                              : cameraEnabled
+                              ? 'Capturer cet animal'
+                              : 'Caméra désactivée'}
+                          </div>
+                        </button>
                       </div>
                       {!cameraEnabled && (
                         <div className="flex items-center gap-2 rounded-xl bg-[#fef1f1] px-3 py-2 text-xs text-[#983737]">

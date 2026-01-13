@@ -17,6 +17,7 @@ interface AnimalModalProps {
   animal: Animal | null;
   open: boolean;
   onClose: () => void;
+  onRequestCapture?: () => void;
 }
 
 const categoryLabels: Record<Animal['category'], string> = {
@@ -40,11 +41,19 @@ const conservationMeta: Record<Animal['conservationStatus'], { label: string; co
   CR: { label: 'En danger critique', color: 'bg-rose-600' },
 };
 
-export default function AnimalModal({ animal, open, onClose }: AnimalModalProps) {
+export default function AnimalModal({ animal, open, onClose, onRequestCapture }: AnimalModalProps) {
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       onClose();
     }
+  };
+
+  const handleCaptureClick = () => {
+    if (!onRequestCapture) {
+      return;
+    }
+    onRequestCapture();
+    onClose();
   };
 
   return (
@@ -118,6 +127,17 @@ export default function AnimalModal({ animal, open, onClose }: AnimalModalProps)
                 )}
               </div>
 
+              <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                  <Camera className="h-4 w-4 text-rose-500" />
+                  Enclos connecté
+                </div>
+                <p className="text-sm text-gray-600">{animal.enclosure.name}</p>
+                <div className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                  Rayon de {animal.enclosure.radius} m · Approche l'entrée officielle puis scanne le panneau pour déclencher la capture.
+                </div>
+              </div>
+
               <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:col-span-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                   <Activity className="h-4 w-4 text-emerald-500" />
@@ -134,13 +154,13 @@ export default function AnimalModal({ animal, open, onClose }: AnimalModalProps)
 
             <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-gray-600">
-                Capture un souvenir AR près de la zone {animal.zoneName} pour remplir ta galerie.
+                Capture un souvenir AR près de la zone {animal.zoneName} en deux étapes : panneau puis animal.
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="ghost" onClick={onClose}>
                   Fermer
                 </Button>
-                <Button className="gap-2">
+                <Button className="gap-2" onClick={handleCaptureClick} disabled={!onRequestCapture}>
                   <Camera className="h-4 w-4" />
                   Scanner ce résident
                 </Button>

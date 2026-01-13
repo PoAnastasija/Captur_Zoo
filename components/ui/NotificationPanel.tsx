@@ -83,7 +83,9 @@ export function NotificationPanel({
               return (
                 <div
                   key={notification.id}
-                  className={`rounded-lg border px-4 py-3 ${notification.unread ? 'border-blue-200 bg-white' : 'border-gray-100 bg-gray-50'}`}
+                  className={`rounded-lg border px-4 py-3 ${
+                    notification.unread ? 'border-blue-200 bg-white' : 'border-gray-100 bg-gray-50'
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className={`flex items-center gap-2 rounded-full px-2 py-1 text-xs font-semibold ${config.className}`}>
@@ -99,15 +101,24 @@ export function NotificationPanel({
                   </div>
                   <p className="mt-2 text-sm font-semibold text-gray-900">{notification.title}</p>
                   <p className="text-sm text-gray-600">{notification.body}</p>
-                  <div className="mt-3 flex items-center justify-between">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                     <Badge className={notification.unread ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}>
                       {notification.unread ? 'Non lu' : 'Lu'}
                     </Badge>
-                    {notification.unread && (
-                      <Button variant="ghost" size="sm" onClick={() => onMarkAsRead(notification.id)}>
-                        Marquer comme lu
-                      </Button>
-                    )}
+                    <div className="flex gap-1">
+                      {notification.unread && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onMarkAsRead(notification.id);
+                          }}
+                        >
+                          Marquer comme lu
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
