@@ -440,7 +440,7 @@ export default function Home() {
     try {
       poiSocketConnectingRef.current = true;
       const socket = io(POI_SOCKET_URL, {
-        transports: ['websocket'],
+        transports: ['polling', 'websocket'],
         autoConnect: true,
         reconnection: false,
       });
