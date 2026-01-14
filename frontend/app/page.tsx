@@ -122,23 +122,6 @@ const WS_RECONNECT_DELAY_MS = 5000;
 const POSITION_UPDATE_THROTTLE_MS = 5000;
 const POSITION_HEARTBEAT_MS = 5000;
 
-const buildPoiSocketUrl = () => {
-  try {
-    const url = new URL(BACKEND_URL);
-    if (BACKEND_PORT) {
-      url.port = BACKEND_PORT;
-    }
-    url.pathname = '/';
-    return url.toString();
-  } catch (error) {
-    const normalizedBase = BACKEND_URL.replace(/\/$/, '');
-    const portPart = BACKEND_PORT ? `:${BACKEND_PORT}` : '';
-    return `${normalizedBase}${portPart || ''}`;
-  }
-};
-
-const POI_SOCKET_URL = buildPoiSocketUrl();
-
 const toRadians = (value: number) => (value * Math.PI) / 180;
 
 const getDistanceMeters = (a: [number, number], b: [number, number]) => {
@@ -357,6 +340,7 @@ export default function Home() {
         return;
       }
       try {
+        // Send your position
         socket.emit('update_position', {
           latitude: targetCoords[0],
           longitude: targetCoords[1],
@@ -439,11 +423,10 @@ export default function Home() {
 
     try {
       poiSocketConnectingRef.current = true;
-      // Vercel doesn't support WebSocket upgrades, use polling only
-      const isVercel = POI_SOCKET_URL.includes('vercel.app');
-      const socket = io(POI_SOCKET_URL, {
-        transports: isVercel ? ['polling'] : ['polling', 'websocket'],
-        upgrade: !isVercel,
+
+      // Simple socket connection to backend URL
+      const socket = io(BACKEND_BASE_URL, {
+        transports: ['polling', 'websocket'],
         autoConnect: true,
         reconnection: false,
       });
@@ -458,6 +441,7 @@ export default function Home() {
         sendPoiPositionUpdate(undefined, true);
       });
 
+      // Receive occupancy updates
       socket.on('pois_affluence', handlePoiSocketPayload);
 
       socket.on('connect_error', () => {
