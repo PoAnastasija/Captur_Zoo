@@ -102,8 +102,8 @@ const categoryEmoji: Record<Animal['category'], string> = {
   amphibian: '🐸',
 };
 const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost').replace(/\/$/, '');
-const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
-const BACKEND_BASE_URL = `${BACKEND_URL}:${BACKEND_PORT}`;
+const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
+const BACKEND_BASE_URL = BACKEND_PORT ? `${BACKEND_URL}:${BACKEND_PORT}` : BACKEND_URL;
 const DETECTION_API_URL = `${BACKEND_BASE_URL}/api/detect`;
 const detectionMethodLabels: Record<string, string> = {
   yolo: 'YOLOv8',

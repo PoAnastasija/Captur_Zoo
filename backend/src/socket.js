@@ -46,6 +46,7 @@ function initSocket(server) {
 }
 
 function calculatePoiAffluence() {
+    console.log("===============================================================================")
     return pois.map(poi => {
         let affluence = 0;
         userPositions.forEach((pos) => {
