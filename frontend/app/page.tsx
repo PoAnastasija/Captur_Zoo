@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { baseBadges } from './data/badges';
 import { baseAnimals } from './data/animals';
 import { fetchPois, normalizeRemotePois, RemotePoi } from './data/pois';
-import { Animal, BadgeReward, CaptureIntent, CapturedPhoto, CaptureStep, CrowdLevel, CrowdReportEntry, Poi, ZooNotification } from './types/zoo';
+import { Animal, BadgeReward, CaptureIntent, CapturedPhoto, CaptureStep, CrowdLevel, CrowdReportEntry, PhotoAnalysisState, Poi, ZooNotification } from './types/zoo';
 import AnimalModal from '../components/ui/AnimalModal';
 import { ZoodexPanel } from '@/components/ui/BadgePanel';
 import { PhotoGallery } from '@/components/ui/PhotoGallery';
@@ -13,6 +13,7 @@ import { CrowdReportPanel } from '@/components/ui/CrowdReportPanel';
 import { ZooLogo } from '@/components/ui/ZooLogo';
 import { SettingsPanel } from '@/components/ui/SettingsPanel';
 import { AuthButton } from '@/components/ui/AuthButton';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
@@ -117,8 +118,6 @@ const formatDetectionSummary = (analysis: DetectionAnalysis) => {
   return `${methodLabel} · ${countLabel}`;
 };
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
-const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
 const WS_RECONNECT_DELAY_MS = 5000;
 const POSITION_UPDATE_THROTTLE_MS = 5000;
 const POSITION_HEARTBEAT_MS = 5000;
@@ -1584,7 +1583,7 @@ export default function Home() {
                   {analysisState.status === 'success' ? 'Analyse réussie' : 'Analyse impossible'}
                 </DialogTitle>
                 <DialogDescription className="text-sm text-[#4a5a51]">
-                  {analysisState.message 
+                  {analysisState.message
                     ?? (analysisState.status === 'success'
                       ? 'L’animal a été détecté avec succès.'
                       : 'La détection n’a pas pu confirmer la présence d’un animal.')}

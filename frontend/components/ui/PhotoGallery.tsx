@@ -2,10 +2,8 @@
 
 import Image from 'next/image';
 import { ChangeEvent, useMemo, useRef } from 'react';
-import { CheckCircle2, Circle, Lock } from 'lucide-react';
-import { Animal, CaptureIntent } from '@/app/types/zoo';
 import { CheckCircle2, Circle, Loader2, Lock } from 'lucide-react';
-import { Animal, CaptureIntent, PhotoAnalysisState } from '@/types/zoo';
+import { Animal, CaptureIntent, PhotoAnalysisState } from '@/app/types/zoo';
 import {
   Dialog,
   DialogClose,

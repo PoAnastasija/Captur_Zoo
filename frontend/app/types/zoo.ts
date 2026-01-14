@@ -99,3 +99,11 @@ export interface CapturedPhoto {
   dataUrl: string;
   filename: string;
 }
+
+export interface PhotoAnalysisState {
+  status: 'idle' | 'pending' | 'success' | 'error';
+  message?: string;
+  detail?: string;
+  animalName?: string;
+  step?: CaptureStep;
+}
