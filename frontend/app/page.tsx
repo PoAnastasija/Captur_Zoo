@@ -112,6 +112,9 @@ const detectionMethodLabels: Record<string, string> = {
 
 type ManagedWebSocket = WebSocket & { __intentionalClose?: boolean };
 
+const isLocalBackend = /localhost|127\.0\.0\.1|::1/.test(BACKEND_BASE_URL);
+const rawPoiSocketUrl = process.env.NEXT_PUBLIC_POI_WS_URL?.trim();
+
 const toWebSocketUrl = (input: string) => {
   if (!input) {
     return 'ws://localhost';
@@ -127,7 +130,11 @@ const toWebSocketUrl = (input: string) => {
 
 const POI_WEBSOCKET_URL = toWebSocketUrl(BACKEND_BASE_URL);
 
-const formatDetectionSummary = (analysis: DetectionAnalysis) => {
+const POI_WEBSOCKET_URL = rawPoiSocketUrl
+  ? toWebSocketUrl(rawPoiSocketUrl)
+  : isLocalBackend
+    ? toWebSocketUrl(BACKEND_BASE_URL)
+    : null;
   const methodLabel = detectionMethodLabels[analysis.method ?? ''] ?? 'analyse IA';
   const occurrences = Math.max(analysis.count ?? 0, 1);
   const countLabel = `${occurrences} détection${occurrences > 1 ? 's' : ''}`;
@@ -430,6 +437,14 @@ export default function Home() {
   }, []);
 
   const connectPoiSocket = useCallback(() => {
+    if (!POI_WEBSOCKET_URL) {
+      setPoiState((prev) => ({
+        ...prev,
+        status: prev.items.length ? prev.status : 'error',
+        error: 'Flux POI temps réel indisponible sur cet environnement.',
+      }));
+      return;
+    }
     if (typeof window === 'undefined' || typeof window.WebSocket === 'undefined') {
       return;
     }
@@ -522,7 +537,7 @@ export default function Home() {
       console.error('Impossible de se connecter au websocket POI', error);
       schedulePoiReconnect(connectPoiSocket);
     }
-  }, [handlePoiSocketPayload, poiState.items.length, schedulePoiReconnect, sendPoiPositionUpdate]);
+  }, [handlePoiSocketPayload, poiState.items.length, schedulePoiReconnect, sendPoiPositionUpdate, POI_WEBSOCKET_URL]);
 
   const addNotification = useCallback(
     (payload: Omit<ZooNotification, 'id' | 'timestamp' | 'unread'>, options?: { broadcast?: boolean }) => {
