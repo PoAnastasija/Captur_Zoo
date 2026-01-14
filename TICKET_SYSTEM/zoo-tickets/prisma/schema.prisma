@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Employee {
+  id         String   @id
+  name       String
+  email      String
+  role       String
+  department String
+  avatar     String?
+  phone      String?
+  ticketsCreated Ticket[] @relation("createdBy")
+  ticketsAssigned Ticket[] @relation("assignedTo")
+  uploadedAttachments TicketAttachment[] @relation("uploadedBy")
+  authoredComments TicketComment[] @relation("author")
+}
+
+model Ticket {
+  id          String   @id
+  title       String
+  description String
+  category    String
+  priority    String
+  status      String
+
+  createdById String
+  createdBy   Employee @relation("createdBy", fields: [createdById], references: [id])
+
+  assignedToId String?
+  assignedTo   Employee? @relation("assignedTo", fields: [assignedToId], references: [id])
+
+  // store JSON as stringified JSON for SQLite compatibility
+  location String?
+  createdAt DateTime
+  updatedAt DateTime
+  dueDate DateTime?
+  resolvedAt DateTime?
+  metadata String?
+  // tags stored as comma-separated string
+  tags String?
+
+  attachments TicketAttachment[]
+  comments    TicketComment[]
+}
+
+model TicketAttachment {
+  id         String @id
+  filename   String
+  url        String
+  type       String
+  size       Int
+  uploadedById String
+  uploadedBy Employee @relation("uploadedBy", fields: [uploadedById], references: [id])
+  uploadedAt DateTime
+  ticketId   String
+  ticket     Ticket @relation(fields: [ticketId], references: [id])
+}
+
+model TicketComment {
+  id        String @id
+  content   String
+  authorId  String
+  author    Employee @relation("author", fields: [authorId], references: [id])
+  createdAt DateTime
+  internal  Boolean
+  ticketId  String
+  ticket    Ticket @relation(fields: [ticketId], references: [id])
+}
+
+ 

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "TKT-001",
+    "title": "Modification technique",
+    "description": "Bonjour,\n\nPourriez-vous ajouter en pop-up le menu de noël que je vous joins pour le 24 et 25 décembre...",
+    "category": "maintenance",
+    "priority": "medium",
+    "status": "in-progress",
+    "createdBy": { "id": "emp-2" },
+    "assignedTo": { "id": "emp-1" },
+    "watchers": [],
+    "location": { "zone": "TT TIRAMISU" },
+    "createdAt": "2025-12-23T10:00:00.000Z",
+    "updatedAt": "2025-12-23T10:30:00.000Z",
+    "dueDate": "2025-12-23T18:00:00.000Z",
+    "attachments": [
+      { "id": "att-1", "filename": "menu-noel.pdf", "url": "", "type": "pdf", "size": 1024000, "uploadedBy": { "id": "emp-2" }, "uploadedAt": "2025-12-23T10:00:00.000Z" }
+    ],
+    "comments": [],
+    "tags": [],
+    "metadata": { "interlocuteur": "Tina NAZARYAN", "email": "tinashirv@gmail.com", "phone": "01 81 81 70 71", "source": "Mail" }
+  }
+]

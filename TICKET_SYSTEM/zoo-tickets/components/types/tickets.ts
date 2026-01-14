@@ -74,6 +74,14 @@ export interface Ticket {
     visitorName?: string;
     injuryType?: string;
     emergencyServices?: boolean;
+    // Champs libres / metadata générique
+    interlocuteur?: string;
+    email?: string;
+    phone?: string;
+    url?: string;
+    source?: string;
+    timeEstimate?: string;
+    [key: string]: any;
   };
 }
 
