@@ -14,7 +14,6 @@ import { ZooLogo } from '@/components/ui/ZooLogo';
 import { SettingsPanel } from '@/components/ui/SettingsPanel';
 import { AuthButton } from '@/components/ui/AuthButton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
   BookOpenCheck,
@@ -110,6 +109,23 @@ const detectionMethodLabels: Record<string, string> = {
   detectron2: 'Detectron2',
   classifier: 'ResNet50',
 };
+
+type ManagedWebSocket = WebSocket & { __intentionalClose?: boolean };
+
+const toWebSocketUrl = (input: string) => {
+  if (!input) {
+    return 'ws://localhost';
+  }
+  if (input.startsWith('ws')) {
+    return input;
+  }
+  if (input.startsWith('http')) {
+    return input.replace(/^http/, 'ws');
+  }
+  return `ws://${input.replace(/^\/+/g, '')}`;
+};
+
+const POI_WEBSOCKET_URL = toWebSocketUrl(BACKEND_BASE_URL);
 
 const formatDetectionSummary = (analysis: DetectionAnalysis) => {
   const methodLabel = detectionMethodLabels[analysis.method ?? ''] ?? 'analyse IA';
@@ -224,7 +240,7 @@ export default function Home() {
   const realtimeChannelRef = useRef<BroadcastChannel | null>(null);
   const clientIdRef = useRef<string>(`client-${Math.random().toString(36).slice(2)}`);
   const poiControllerRef = useRef<AbortController | null>(null);
-  const poiSocketRef = useRef<Socket | null>(null);
+  const poiSocketRef = useRef<ManagedWebSocket | null>(null);
   const poiSocketConnectingRef = useRef(false);
   const lastPositionMessageRef = useRef<number>(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -324,11 +340,11 @@ export default function Home() {
 
   const sendPoiPositionUpdate = useCallback(
     (coords?: [number, number], force = false) => {
-      if (!locationOptIn) {
+      if (!locationOptIn || typeof WebSocket === 'undefined') {
         return;
       }
       const socket = poiSocketRef.current;
-      if (!socket || !socket.connected) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
         return;
       }
       const now = Date.now();
@@ -340,11 +356,15 @@ export default function Home() {
         return;
       }
       try {
-        // Send your position
-        socket.emit('update_position', {
-          latitude: targetCoords[0],
-          longitude: targetCoords[1],
-        });
+        socket.send(
+          JSON.stringify({
+            event: 'update_position',
+            payload: {
+              latitude: targetCoords[0],
+              longitude: targetCoords[1],
+            },
+          })
+        );
         lastPositionMessageRef.current = now;
       } catch (error) {
         console.warn("Impossible d'envoyer la position au backend", error);
@@ -410,53 +430,90 @@ export default function Home() {
   }, []);
 
   const connectPoiSocket = useCallback(() => {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || typeof window.WebSocket === 'undefined') {
       return;
     }
-    const existing = poiSocketRef.current;
+
     if (poiSocketConnectingRef.current) {
       return;
     }
-    if (existing && !existing.disconnected) {
+
+    const existing = poiSocketRef.current;
+    if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
     try {
       poiSocketConnectingRef.current = true;
-
-      // Simple socket connection to backend URL
-      const socket = io(BACKEND_BASE_URL, {
-        transports: ['polling', 'websocket'],
-        autoConnect: true,
-        reconnection: false,
-      });
-      poiSocketRef.current = socket;
+      const socket = new window.WebSocket(POI_WEBSOCKET_URL);
+      const managedSocket = socket as ManagedWebSocket;
+      managedSocket.__intentionalClose = false;
+      poiSocketRef.current = managedSocket;
 
       if (poiState.items.length === 0) {
         setPoiState((prev) => ({ ...prev, status: 'loading', error: null }));
       }
 
-      socket.on('connect', () => {
+      const forwardPayload = (raw: unknown) => {
+        let payload: unknown = raw;
+        if (typeof payload === 'string') {
+          try {
+            payload = JSON.parse(payload);
+          } catch {
+            // Ignore decoding errors and forward raw string
+          }
+        }
+        if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+          const typed = payload as { event?: string; type?: string; data?: unknown; payload?: unknown };
+          const eventName = typed.event ?? typed.type;
+          if (eventName === 'pois_affluence') {
+            handlePoiSocketPayload(typed.payload ?? typed.data);
+            return;
+          }
+        }
+        handlePoiSocketPayload(payload);
+      };
+
+      const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
+
+      const handleMessage = (event: MessageEvent) => {
+        if (typeof event.data === 'string') {
+          forwardPayload(event.data);
+          return;
+        }
+        if (event.data instanceof Blob) {
+          event.data
+            .text()
+            .then(forwardPayload)
+            .catch((blobError) => console.warn('Impossible de décoder un message WebSocket', blobError));
+          return;
+        }
+        if (event.data instanceof ArrayBuffer && decoder) {
+          forwardPayload(decoder.decode(event.data));
+          return;
+        }
+        forwardPayload(event.data);
+      };
+
+      socket.addEventListener('open', () => {
         poiSocketConnectingRef.current = false;
         sendPoiPositionUpdate(undefined, true);
       });
 
-      // Receive occupancy updates
-      socket.on('pois_affluence', handlePoiSocketPayload);
+      socket.addEventListener('message', handleMessage);
 
-      socket.on('connect_error', () => {
+      socket.addEventListener('error', () => {
         poiSocketConnectingRef.current = false;
         setPoiState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'error', error: 'Flux POI indisponible.' }));
-        socket.disconnect();
-        schedulePoiReconnect(connectPoiSocket);
+        socket.close();
       });
 
-      socket.on('disconnect', (reason) => {
+      socket.addEventListener('close', () => {
         poiSocketConnectingRef.current = false;
-        if (poiSocketRef.current === socket) {
+        if (poiSocketRef.current === managedSocket) {
           poiSocketRef.current = null;
         }
-        if (reason !== 'io client disconnect') {
+        if (!managedSocket.__intentionalClose) {
           schedulePoiReconnect(connectPoiSocket);
         }
       });
@@ -1376,7 +1433,8 @@ export default function Home() {
       const socket = poiSocketRef.current;
       if (socket) {
         poiSocketConnectingRef.current = false;
-        socket.disconnect();
+        socket.__intentionalClose = true;
+        socket.close(1000, 'client disconnect');
         poiSocketRef.current = null;
       }
     };
