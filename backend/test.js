@@ -11,7 +11,7 @@
 // console.log(POIss)
 
 const io = require("socket.io-client")
-const socket = io("http://localhost:3001");
+const socket = io("https://pocket-zoo-backend.vercel.app:80");
 
 // Send your position
 socket.emit("update_position", { latitude: 47.73265994485, longitude: 7.348608328078 });

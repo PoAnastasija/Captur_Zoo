@@ -100,7 +100,7 @@ const categoryEmoji: Record<Animal['category'], string> = {
 };
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
-const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
+const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
 const WS_RECONNECT_DELAY_MS = 5000;
 const POSITION_UPDATE_THROTTLE_MS = 5000;
 const POSITION_HEARTBEAT_MS = 5000;

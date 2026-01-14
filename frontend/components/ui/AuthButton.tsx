@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
-const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
+const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
 const AUTH_TOKEN_KEY = 'captur_zoo_auth_token';
 const AUTH_USERNAME_KEY = 'captur_zoo_username';
 export const AUTH_CHANGED_EVENT = 'captur_zoo_auth_changed';
@@ -56,7 +56,10 @@ export function AuthButton({ className = '' }: AuthButtonProps) {
 
     try {
       const endpoint = isLogin ? 'login' : 'register';
-      const response = await fetch(`${BACKEND_URL}:${BACKEND_PORT}/api/${endpoint}`, {
+      const backendUrl = BACKEND_PORT
+        ? `${BACKEND_URL}:${BACKEND_PORT}`
+        : BACKEND_URL;
+      const response = await fetch(`${backendUrl}/api/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

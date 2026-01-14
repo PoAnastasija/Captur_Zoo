@@ -3,7 +3,7 @@
 import { Poi, PoiCategory } from '../types/zoo';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
-const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
+const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
 
 export class PoiApiError extends Error {
   constructor(message = 'Impossible de récupérer les POIs.') {
@@ -85,7 +85,8 @@ export async function fetchPois(options?: FetchPoisOptions): Promise<Poi[]> {
     throw new PoiApiError("La récupération des POIs doit s'effectuer côté client.");
   }
 
-  const response = await fetch(`${BACKEND_URL}:${BACKEND_PORT}/api/pois`, {
+  const baseUrl = BACKEND_PORT ? `${BACKEND_URL}:${BACKEND_PORT}` : BACKEND_URL;
+  const response = await fetch(`${baseUrl}/api/pois`, {
     headers: {
       Accept: 'application/json',
     },

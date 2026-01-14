@@ -21,7 +21,7 @@ interface ZoodexPanelProps {
 }
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
-const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
+const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
 
 interface RemoteAnimal {
   name: string;
@@ -120,7 +120,8 @@ export function ZoodexPanel({
 
     const fetchUserAnimals = async () => {
       try {
-        const response = await fetch(`${BACKEND_URL}:${BACKEND_PORT}/api/user/animals`, {
+        const baseUrl = BACKEND_PORT ? `${BACKEND_URL}:${BACKEND_PORT}` : BACKEND_URL;
+        const response = await fetch(`${baseUrl}/api/user/animals`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
