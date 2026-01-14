@@ -12,7 +12,7 @@ export class PoiApiError extends Error {
   }
 }
 
-interface RemotePoi {
+export interface RemotePoi {
   id?: string | number;
   name: string;
   latitude: number;
@@ -74,6 +74,8 @@ const mapRemotePoi = (poi: RemotePoi): Poi => {
   };
 };
 
+export const normalizeRemotePois = (entries: RemotePoi[]): Poi[] => entries.map((entry) => mapRemotePoi(entry));
+
 interface FetchPoisOptions {
   signal?: AbortSignal;
 }
@@ -103,5 +105,5 @@ export async function fetchPois(options?: FetchPoisOptions): Promise<Poi[]> {
     throw new PoiApiError('Format de réponse POI inattendu.');
   }
 
-  return payload.map((entry) => mapRemotePoi(entry as RemotePoi));
+  return normalizeRemotePois(payload as RemotePoi[]);
 }

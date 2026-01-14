@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Animal, CrowdLevel } from '@/types/zoo';
+import { Animal, CrowdLevel } from '@/app/types/zoo';
 import {
   Dialog,
   DialogClose,

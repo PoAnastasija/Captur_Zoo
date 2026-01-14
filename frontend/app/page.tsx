@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { baseBadges } from './data/badges';
 import { baseAnimals } from './data/animals';
-import { fetchPois } from './data/pois';
+import { fetchPois, normalizeRemotePois, RemotePoi } from './data/pois';
 import { Animal, BadgeReward, CaptureIntent, CapturedPhoto, CaptureStep, CrowdLevel, CrowdReportEntry, Poi, ZooNotification } from './types/zoo';
 import AnimalModal from '../components/ui/AnimalModal';
 import { ZoodexPanel } from '@/components/ui/BadgePanel';
@@ -13,6 +13,7 @@ import { CrowdReportPanel } from '@/components/ui/CrowdReportPanel';
 import { ZooLogo } from '@/components/ui/ZooLogo';
 import { SettingsPanel } from '@/components/ui/SettingsPanel';
 import { AuthButton } from '@/components/ui/AuthButton';
+import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
   Camera,
@@ -97,6 +98,29 @@ const categoryEmoji: Record<Animal['category'], string> = {
   reptile: '🐊',
   amphibian: '🐸',
 };
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
+const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
+const WS_RECONNECT_DELAY_MS = 5000;
+const POSITION_UPDATE_THROTTLE_MS = 5000;
+const POSITION_HEARTBEAT_MS = 5000;
+
+const buildPoiSocketUrl = () => {
+  try {
+    const url = new URL(BACKEND_URL);
+    if (BACKEND_PORT) {
+      url.port = BACKEND_PORT;
+    }
+    url.pathname = '/';
+    return url.toString();
+  } catch (error) {
+    const normalizedBase = BACKEND_URL.replace(/\/$/, '');
+    const portPart = BACKEND_PORT ? `:${BACKEND_PORT}` : '';
+    return `${normalizedBase}${portPart || ''}`;
+  }
+};
+
+const POI_SOCKET_URL = buildPoiSocketUrl();
 
 const toRadians = (value: number) => (value * Math.PI) / 180;
 
@@ -184,6 +208,10 @@ export default function Home() {
   const realtimeChannelRef = useRef<BroadcastChannel | null>(null);
   const clientIdRef = useRef<string>(`client-${Math.random().toString(36).slice(2)}`);
   const poiControllerRef = useRef<AbortController | null>(null);
+  const poiSocketRef = useRef<Socket | null>(null);
+  const poiSocketConnectingRef = useRef(false);
+  const lastPositionMessageRef = useRef<number>(0);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [mapReservedSpace, setMapReservedSpace] = useState(180);
 
   const handleAnimalClick = (animal: Animal) => {
@@ -212,6 +240,16 @@ export default function Home() {
     } catch (error) {
       console.warn('Impossible de sauvegarder les photos', error);
     }
+  }, []);
+
+  const schedulePoiReconnect = useCallback((reconnectFn: () => void) => {
+    if (reconnectTimeoutRef.current) {
+      return;
+    }
+    reconnectTimeoutRef.current = setTimeout(() => {
+      reconnectTimeoutRef.current = null;
+      reconnectFn();
+    }, WS_RECONNECT_DELAY_MS);
   }, []);
 
   const loadPois = useCallback(async () => {
@@ -266,6 +304,36 @@ export default function Home() {
     document.body.removeChild(link);
   }, []);
 
+  const sendPoiPositionUpdate = useCallback(
+    (coords?: [number, number], force = false) => {
+      if (!locationOptIn) {
+        return;
+      }
+      const socket = poiSocketRef.current;
+      if (!socket || !socket.connected) {
+        return;
+      }
+      const now = Date.now();
+      if (!force && now - lastPositionMessageRef.current < POSITION_UPDATE_THROTTLE_MS) {
+        return;
+      }
+      const targetCoords = coords ?? userPosition;
+      if (!targetCoords) {
+        return;
+      }
+      try {
+        socket.emit('update_position', {
+          latitude: targetCoords[0],
+          longitude: targetCoords[1],
+        });
+        lastPositionMessageRef.current = now;
+      } catch (error) {
+        console.warn("Impossible d'envoyer la position au backend", error);
+      }
+    },
+    [locationOptIn, userPosition]
+  );
+
   const sendRealtimeMessage = useCallback(
     (message: OutgoingRealtimeMessage) => {
       const channel = realtimeChannelRef.current;
@@ -276,6 +344,27 @@ export default function Home() {
     },
     []
   );
+
+  const handlePoiSocketPayload = useCallback((payload: unknown) => {
+    try {
+      let entries: RemotePoi[] | undefined;
+      if (Array.isArray(payload)) {
+        entries = payload as RemotePoi[];
+      } else if (payload && typeof payload === 'object') {
+        const candidate = (payload as { data?: unknown; payload?: unknown }).data ?? (payload as { payload?: unknown }).payload;
+        if (Array.isArray(candidate)) {
+          entries = candidate as RemotePoi[];
+        }
+      }
+      if (!entries) {
+        return;
+      }
+      const normalized = normalizeRemotePois(entries);
+      setPoiState({ items: normalized, status: 'ready', error: null });
+    } catch (error) {
+      console.warn('Message POI websocket invalide', error);
+    }
+  }, []);
 
   const unlockBadge = useCallback((badgeId: string) => {
     let unlockedBadge: BadgeReward | null = null;
@@ -300,6 +389,61 @@ export default function Home() {
       setBadgeToast(unlockedBadge);
     }
   }, []);
+
+  const connectPoiSocket = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const existing = poiSocketRef.current;
+    if (poiSocketConnectingRef.current) {
+      return;
+    }
+    if (existing && !existing.disconnected) {
+      return;
+    }
+
+    try {
+      poiSocketConnectingRef.current = true;
+      const socket = io(POI_SOCKET_URL, {
+        transports: ['websocket'],
+        autoConnect: true,
+        reconnection: false,
+      });
+      poiSocketRef.current = socket;
+
+      if (poiState.items.length === 0) {
+        setPoiState((prev) => ({ ...prev, status: 'loading', error: null }));
+      }
+
+      socket.on('connect', () => {
+        poiSocketConnectingRef.current = false;
+        sendPoiPositionUpdate(undefined, true);
+      });
+
+      socket.on('pois_affluence', handlePoiSocketPayload);
+
+      socket.on('connect_error', () => {
+        poiSocketConnectingRef.current = false;
+        setPoiState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'error', error: 'Flux POI indisponible.' }));
+        socket.disconnect();
+        schedulePoiReconnect(connectPoiSocket);
+      });
+
+      socket.on('disconnect', (reason) => {
+        poiSocketConnectingRef.current = false;
+        if (poiSocketRef.current === socket) {
+          poiSocketRef.current = null;
+        }
+        if (reason !== 'io client disconnect') {
+          schedulePoiReconnect(connectPoiSocket);
+        }
+      });
+    } catch (error) {
+      poiSocketConnectingRef.current = false;
+      console.error('Impossible de se connecter au websocket POI', error);
+      schedulePoiReconnect(connectPoiSocket);
+    }
+  }, [handlePoiSocketPayload, poiState.items.length, schedulePoiReconnect, sendPoiPositionUpdate]);
 
   const addNotification = useCallback(
     (payload: Omit<ZooNotification, 'id' | 'timestamp' | 'unread'>, options?: { broadcast?: boolean }) => {
@@ -649,7 +793,7 @@ export default function Home() {
         return;
       }
 
-      const options: NotificationOptions = {
+      const options: NotificationOptions & { vibrate?: number[] } = {
         body: notification.body,
         icon: '/icon-192.png',
         badge: '/icon-192.png',
@@ -706,7 +850,7 @@ export default function Home() {
             return animal;
           }
           const visitorCount = Math.round(animal.capacity * levelRatio[level]);
-          const updated = {
+          const updated: Animal = {
             ...animal,
             crowdLevel: level,
             visitorCount,
@@ -720,13 +864,15 @@ export default function Home() {
         return;
       }
 
+      const zone: Animal = updatedZone;
+
       const reportEntry: CrowdReportEntry = {
         id: `report-${Date.now()}`,
-        animalId: updatedZone.id,
-        animalName: updatedZone.name,
-        zoneName: updatedZone.zoneName,
+        animalId: zone.id,
+        animalName: zone.name,
+        zoneName: zone.zoneName,
         level,
-        visitorCount: updatedZone.visitorCount,
+        visitorCount: zone.visitorCount,
         comment: comment || undefined,
         timestamp: new Date().toISOString(),
         contributor: 'Visiteur anonyme',
@@ -737,19 +883,19 @@ export default function Home() {
         type: 'crowd-report',
         payload: {
           report: reportEntry,
-          animalId: updatedZone.id,
+          animalId: zone.id,
           level,
-          visitorCount: updatedZone.visitorCount,
+          visitorCount: zone.visitorCount,
         },
       });
 
       addNotification(
         {
-          title: `Signalement ${levelLabels[level]} - ${updatedZone.zoneName}`,
-          body: `${comment ? `${comment} · ` : ''}Affluence estimée à ${updatedZone.visitorCount}/${updatedZone.capacity} visiteurs.`,
+          title: `Signalement ${levelLabels[level]} - ${zone.zoneName}`,
+          body: `${comment ? `${comment} · ` : ''}Affluence estimée à ${zone.visitorCount}/${zone.capacity} visiteurs.`,
           type: level === 'high' ? 'alert' : 'info',
           location: {
-            coords: updatedZone.position,
+            coords: zone.position,
             radiusMeters: DEFAULT_PROXIMITY_RADIUS,
           },
         },
@@ -1069,6 +1215,22 @@ export default function Home() {
   }, [loadPois]);
 
   useEffect(() => {
+    connectPoiSocket();
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      const socket = poiSocketRef.current;
+      if (socket) {
+        poiSocketConnectingRef.current = false;
+        socket.disconnect();
+        poiSocketRef.current = null;
+      }
+    };
+  }, [connectPoiSocket]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -1098,6 +1260,22 @@ export default function Home() {
       resizeObserver?.disconnect();
     };
   }, []);
+  useEffect(() => {
+    if (!locationOptIn || !userPosition) {
+      return;
+    }
+    sendPoiPositionUpdate(userPosition, true);
+  }, [locationOptIn, sendPoiPositionUpdate, userPosition]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !locationOptIn || !userPosition) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      sendPoiPositionUpdate(undefined, true);
+    }, POSITION_HEARTBEAT_MS);
+    return () => window.clearInterval(interval);
+  }, [locationOptIn, sendPoiPositionUpdate, userPosition]);
 
   const mapHeight = `calc(100vh - ${mapReservedSpace}px)`;
 

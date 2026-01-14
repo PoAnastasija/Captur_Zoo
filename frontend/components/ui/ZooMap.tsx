@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 // import 'leaflet/dist/leaflet.css';
-import { Animal, Poi } from '@/types/zoo';
+import { Animal, Poi } from '@/app/types/zoo';
 
 type DefaultIconPrototype = typeof L.Icon.Default.prototype & { _getIconUrl?: () => string };
 
@@ -97,9 +97,11 @@ const FALLBACK_CENTER: [number, number] = [47.734537, 7.350343];
 
 const GEO_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
-  maximumAge: 5000,
-  timeout: 10000,
+  maximumAge: 0,
+  timeout: 60000,
 };
+
+const SAFE_AREA_BOTTOM_PX = 120;
 
 const userLocationIcon = L.divIcon({
   className: 'user-location-marker',
@@ -355,9 +357,7 @@ export default function ZooMap({
         className="h-full w-full"
         style={{ height: '100%' }}
         zoomControl
-        whenCreated={(mapInstance) => {
-          mapRef.current = mapInstance;
-        }}
+        ref={mapRef}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -536,12 +536,18 @@ export default function ZooMap({
         </button>
       </div>
       {geoError && (
-        <div className="absolute bottom-4 right-4 z-[1000] max-w-xs rounded-md bg-white/90 px-3 py-2 text-xs font-medium text-red-600 shadow">
+        <div
+          className="absolute right-4 z-[1000] max-w-xs rounded-md bg-white/90 px-3 py-2 text-xs font-medium text-red-600 shadow"
+          style={{ bottom: SAFE_AREA_BOTTOM_PX }}
+        >
           {geoError}
         </div>
       )}
       {!geoError && !userPosition && (
-        <div className="absolute bottom-4 left-4 z-[1000] max-w-xs rounded-xl bg-white/95 p-3 text-xs text-gray-700 shadow">
+        <div
+          className="absolute left-4 z-[1000] max-w-xs rounded-xl bg-white/95 p-3 text-xs text-gray-700 shadow"
+          style={{ bottom: SAFE_AREA_BOTTOM_PX }}
+        >
           <p className="mb-2 font-semibold text-gray-900">Active ta localisation pour les alertes météo & proximité.</p>
           <button
             type="button"

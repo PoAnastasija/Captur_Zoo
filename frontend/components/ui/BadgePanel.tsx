@@ -20,30 +20,6 @@ interface ZoodexPanelProps {
   onClose: () => void;
 }
 
-interface Quiz {
-  question: string;
-  options: string[];
-  correct: number;
-}
-
-const quizzes: Record<string, Quiz> = {
-  'cercopitheques': {
-    question: 'Combien de sons différents les cercopithèques utilisent-ils pour communiquer?',
-    options: ['10 sons', '20 sons', 'Plus de 30 sons', '50 sons'],
-    correct: 2,
-  },
-  'loups-a-criniere': {
-    question: 'Quelle est la hauteur maximale du loup à crinière aux épaules?',
-    options: ['1 mètre', '1,20 mètres', '1,40 mètres', '1,60 mètres'],
-    correct: 2,
-  },
-  'ours-polaires': {
-    question: 'Quelle est la vraie couleur de la fourrure de l\'ours polaire?',
-    options: ['Blanche', 'Transparente', 'Grise', 'Noire'],
-    correct: 1,
-  },
-};
-
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
 const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
 
@@ -76,8 +52,6 @@ export function ZoodexPanel({
   onClose,
 }: ZoodexPanelProps) {
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
-  const [quizAnswered, setQuizAnswered] = useState<number | null>(null);
-  const [showResult, setShowResult] = useState(false);
   const [remoteAnimals, setRemoteAnimals] = useState<RemoteAnimal[] | null>(null);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState<string | null>(null);
@@ -100,13 +74,6 @@ export function ZoodexPanel({
 
   const handleAnimalClick = (animal: Animal) => {
     setSelectedAnimal(animal);
-    setQuizAnswered(null);
-    setShowResult(false);
-  };
-
-  const handleQuizAnswer = (answerIndex: number) => {
-    setQuizAnswered(answerIndex);
-    setShowResult(true);
   };
 
   const remoteGallery = useMemo<GalleryCard[] | null>(() => {
@@ -188,17 +155,6 @@ export function ZoodexPanel({
 
     return () => controller.abort();
   }, [open]);
-
-  const getQuiz = (animalId: string) => {
-    const key = animalId.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 30);
-    if (quizzes[key]) return quizzes[key];
-    for (const [quizKey, quiz] of Object.entries(quizzes)) {
-      if (key.includes(quizKey) || quizKey.includes(key)) {
-        return quiz;
-      }
-    }
-    return undefined;
-  };
 
   const isCaptured = selectedAnimal ? capturedSet.has(selectedAnimal.id) : false;
 
@@ -334,41 +290,6 @@ export function ZoodexPanel({
                         <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                           <h3 className="font-semibold text-sm mb-1">💡 Anecdote</h3>
                           <p className="text-sm text-blue-900">{selectedAnimal.funFact}</p>
-                        </div>
-                      )}
-
-                      {getQuiz(selectedAnimal.id) && (
-                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200 space-y-3">
-                          <h3 className="font-semibold text-sm">Quiz</h3>
-                          <p className="text-sm">{getQuiz(selectedAnimal.id)?.question}</p>
-                          <div className="space-y-2">
-                            {getQuiz(selectedAnimal.id)?.options.map((option, idx) => {
-                              const isCorrect = idx === getQuiz(selectedAnimal.id)?.correct;
-                              return (
-                                <button
-                                  key={idx}
-                                  onClick={() => handleQuizAnswer(idx)}
-                                  disabled={showResult}
-                                  className={`w-full p-2 rounded text-sm text-left transition-all ${
-                                    showResult
-                                      ? isCorrect
-                                        ? 'bg-green-200 text-green-900 border border-green-400'
-                                        : quizAnswered === idx
-                                        ? 'bg-red-200 text-red-900 border border-red-400'
-                                        : 'bg-gray-100'
-                                      : 'bg-white border border-gray-300 hover:border-purple-400'
-                                  }`}
-                                >
-                                  {option}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {showResult && (
-                            <p className={`text-sm font-semibold ${quizAnswered === getQuiz(selectedAnimal.id)?.correct ? 'text-green-600' : 'text-red-600'}`}>
-                              {quizAnswered === getQuiz(selectedAnimal.id)?.correct ? '✓ Bonne réponse!' : '✗ Mauvaise réponse'}
-                            </p>
-                          )}
                         </div>
                       )}
                     </div>

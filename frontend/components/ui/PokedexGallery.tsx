@@ -12,34 +12,8 @@ interface PokedexGalleryProps {
   capturedEnclosures: string[];
 }
 
-interface Quiz {
-  question: string;
-  options: string[];
-  correct: number;
-}
-
-const quizzes: Record<string, Quiz> = {
-  'cercopitheques': {
-    question: 'Combien de sons différents les cercopithèques utilisent-ils pour communiquer?',
-    options: ['10 sons', '20 sons', 'Plus de 30 sons', '50 sons'],
-    correct: 2,
-  },
-  'loups-a-criniere': {
-    question: 'Quelle est la hauteur maximale du loup à crinière aux épaules?',
-    options: ['1 mètre', '1,20 mètres', '1,40 mètres', '1,60 mètres'],
-    correct: 2,
-  },
-  'ours-polaires': {
-    question: 'Quelle est la vraie couleur de la fourrure de l\'ours polaire?',
-    options: ['Blanche', 'Transparente', 'Grise', 'Noire'],
-    correct: 1,
-  },
-};
-
 export function PokedexGallery({ animals, capturedAnimals, capturedEnclosures }: PokedexGalleryProps) {
   const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
-  const [quizAnswered, setQuizAnswered] = useState<number | null>(null);
-  const [showResult, setShowResult] = useState(false);
 
   const capturedSet = useMemo(() => new Set(capturedAnimals), [capturedAnimals]);
   const enclosureSet = useMemo(() => new Set(capturedEnclosures), [capturedEnclosures]);
@@ -49,30 +23,6 @@ export function PokedexGallery({ animals, capturedAnimals, capturedEnclosures }:
 
   const handleAnimalClick = (animal: Animal) => {
     setSelectedAnimal(animal);
-    setQuizAnswered(null);
-    setShowResult(false);
-  };
-
-  const handleQuizAnswer = (answerIndex: number) => {
-    setQuizAnswered(answerIndex);
-    setShowResult(true);
-  };
-
-  const getQuiz = (animalId: string) => {
-    // Try to match quiz by animal ID or name
-    let key = animalId.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 30);
-    
-    // Check if we have a quiz for this key
-    if (quizzes[key]) return quizzes[key];
-    
-    // If not, try to find by partial match
-    for (const [quizKey, quiz] of Object.entries(quizzes)) {
-      if (key.includes(quizKey) || quizKey.includes(key)) {
-        return quiz;
-      }
-    }
-    
-    return undefined;
   };
 
   const isCaptured = selectedAnimal ? capturedSet.has(selectedAnimal.id) || enclosureSet.has(selectedAnimal.id) : false;
@@ -187,44 +137,6 @@ export function PokedexGallery({ animals, capturedAnimals, capturedEnclosures }:
                 <p className="text-xs sm:text-sm font-bold text-yellow-800 mb-2">💡 Fait intéressant</p>
                 <p className="text-xs sm:text-sm text-yellow-900 leading-relaxed font-semibold">{selectedAnimal.funFact}</p>
               </div>
-
-              {/* Quiz */}
-              {getQuiz(selectedAnimal.id) && (
-                <div className="col-span-1 sm:col-span-2 bg-gradient-to-br from-purple-100 to-pink-100 p-3 sm:p-4 rounded-lg border-3 border-purple-400 shadow-md">
-                  <p className="text-xs sm:text-sm font-bold text-purple-900 mb-3 sm:mb-4">{getQuiz(selectedAnimal.id)!.question}</p>
-                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                    {getQuiz(selectedAnimal.id)!.options.map((option, idx) => {
-                      const isCorrect = idx === getQuiz(selectedAnimal.id)!.correct;
-                      const isSelected = quizAnswered === idx;
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => !showResult && handleQuizAnswer(idx)}
-                          disabled={showResult}
-                          className={`p-2 sm:p-3 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 transform ${
-                            !showResult
-                              ? 'bg-white hover:bg-purple-50 cursor-pointer border-2 border-purple-300 hover:border-purple-500 hover:shadow-md active:scale-95'
-                              : isSelected
-                              ? isCorrect
-                                ? 'bg-green-400 text-white border-2 border-green-600 shadow-lg'
-                                : 'bg-red-400 text-white border-2 border-red-600 shadow-lg'
-                              : isCorrect
-                              ? 'bg-green-400 text-white border-2 border-green-600'
-                              : 'bg-white border-2 border-gray-300 opacity-50'
-                          }`}
-                        >
-                          {option}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {showResult && (
-                    <p className="mt-4 text-sm sm:text-base font-bold text-center p-2 rounded-lg bg-white">
-                      {quizAnswered === getQuiz(selectedAnimal.id)!.correct ? '🎉 Correct! Bravo!' : '❌ Incorrect! Réessaye!'}
-                    </p>
-                  )}
-                </div>
-              )}
 
               <Button
                 onClick={() => setSelectedAnimal(null)}

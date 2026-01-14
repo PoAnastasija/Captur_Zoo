@@ -11,13 +11,13 @@
 // console.log(POIss)
 
 const io = require("socket.io-client")
-const socket = io("http://localhost:4242");
+const socket = io("http://localhost:3001");
 
 // Send your position
 socket.emit("update_position", { latitude: 47.73265994485, longitude: 7.348608328078 });
 
 // Receive occupancy updates
-socket.on("poi_affluence", (data) => {
+socket.on("pois_affluence", (data) => {
     console.log("POI Occupancy Counts:", data);
     // data looks like: [{ name: "Cercopithèques", count: 3 }, ...]
 });

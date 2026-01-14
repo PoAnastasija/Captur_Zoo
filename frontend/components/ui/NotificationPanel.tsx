@@ -1,6 +1,7 @@
 'use client';
 
 import { CrowdLevel, CrowdReportEntry, ZooNotification } from '@/app/types/zoo';
+import { ReactNode } from 'react';
 import {
   Dialog,
   DialogClose,
@@ -21,7 +22,7 @@ interface NotificationPanelProps {
   onMarkAllRead: () => void;
 }
 
-const typeConfig: Record<ZooNotification['type'], { label: string; icon: JSX.Element; className: string }> = {
+const typeConfig: Record<ZooNotification['type'], { label: string; icon: ReactNode; className: string }> = {
   event: { label: 'Événement', icon: <Bell className="size-4" />, className: 'bg-blue-50 text-blue-600' },
   alert: { label: 'Alerte', icon: <TriangleAlert className="size-4" />, className: 'bg-red-50 text-red-600' },
   info: { label: 'Info', icon: <Info className="size-4" />, className: 'bg-amber-50 text-amber-600' },

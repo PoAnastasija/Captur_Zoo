@@ -21,6 +21,7 @@ function initSocket(server) {
 
         socket.on("update_position", (data) => {
             const { latitude, longitude } = data;
+            console.log(latitude, longitude)
             if (latitude !== undefined && longitude !== undefined) {
                 userPositions.set(socket.id, { latitude, longitude });
 
@@ -28,7 +29,7 @@ function initSocket(server) {
                 const poiOccupancy = calculatePoiAffluence();
 
                 // Broadcast updated occupancy counts
-                io.emit("poi_affluence", poiOccupancy);
+                io.emit("pois_affluence", poiOccupancy);
             }
         });
 
@@ -38,7 +39,7 @@ function initSocket(server) {
 
             // Re-calculate and broadcast after disconnect
             const poiOccupancy = calculatePoiAffluence();
-            io.emit("poi_affluence", poiOccupancy);
+            io.emit("pois_affluence", poiOccupancy);
         });
     });
 
@@ -50,7 +51,8 @@ function calculatePoiAffluence() {
         let affluence = 0;
         userPositions.forEach((pos) => {
             const distance = getDistance(poi.latitude, poi.longitude, pos.latitude, pos.longitude);
-            if (distance <= 5) {
+            console.log(distance)
+            if (distance <= 30) {
                 affluence++;
             }
         });
