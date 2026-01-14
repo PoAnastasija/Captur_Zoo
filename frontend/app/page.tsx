@@ -122,7 +122,7 @@ const toWebSocketUrl = (input: string) => {
   if (input.startsWith('http')) {
     return input.replace(/^http/, 'ws');
   }
-  return `ws://${input.replace(/^\/+/g, '')}`;
+  return `https://${input.replace(/^\/+/g, '')}`;
 };
 
 const POI_WEBSOCKET_URL = toWebSocketUrl(BACKEND_BASE_URL);
