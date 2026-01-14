@@ -2,8 +2,7 @@ const { Server } = require("socket.io");
 const { getDistance } = require("./utils/geo");
 const fs = require("fs");
 const path = require("path");
-
-const pois = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'pois.json'), "utf8"));
+const pois = require("./pois.js");
 
 // Store user positions: socket.id -> { latitude, longitude }
 const userPositions = new Map();

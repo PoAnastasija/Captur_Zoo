@@ -4,6 +4,7 @@ const verify_auth = require('../../middleware/auth.js');
 const connection = require('../../config/db.js');
 const { get_account_by_id } = require('../users/users.query.js');
 const { get_user_unlocked_animals } = require('./user.query.js');
+const pois = require("../../pois.js");
 
 const user_router = Router();
 
@@ -20,7 +21,7 @@ user_router.get('/animals', verify_auth, async (req, res) => {
     if (!account)
         return res.status(404).json({ msg: "Not found" });
 
-    const animals = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'pois.json'), "utf8")).filter(p => p.type === "animaux");
+    const animals = pois.filter(p => p.type === "animaux");
     const unlocked_animals = await get_user_unlocked_animals(connection, req.token_id);
 
     const output = animals.map(animal => {

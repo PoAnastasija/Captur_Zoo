@@ -1,4 +1,4 @@
-[
+const POIs = [
     {
         "name": "KMO",
         "longitude": 7.328088,
@@ -672,3 +672,5 @@
         "type": "animaux"
     }
 ]
+
+module.exports = POIs
