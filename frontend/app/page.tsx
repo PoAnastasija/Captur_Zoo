@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { baseBadges } from './data/badges';
 import { baseAnimals } from './data/animals';
-import { pois } from './data/pois';
-import { Animal, BadgeReward, CaptureIntent, CapturedPhoto, CaptureStep, CrowdLevel, CrowdReportEntry, ZooNotification } from './types/zoo';
+import { fetchPois } from './data/pois';
+import { Animal, BadgeReward, CaptureIntent, CapturedPhoto, CaptureStep, CrowdLevel, CrowdReportEntry, Poi, ZooNotification } from './types/zoo';
 import AnimalModal from '../components/ui/AnimalModal';
 import { ZoodexPanel } from '@/components/ui/BadgePanel';
 import { PhotoGallery } from '@/components/ui/PhotoGallery';
@@ -129,6 +129,14 @@ type OutgoingRealtimeMessage =
 
 type RealtimeMessage = OutgoingRealtimeMessage & { source: string };
 
+type PoiStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+interface PoiState {
+  items: Poi[];
+  status: PoiStatus;
+  error: string | null;
+}
+
 
 const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
   ssr: false,
@@ -165,6 +173,7 @@ export default function Home() {
   const [cameraAccessEnabled, setCameraAccessEnabled] = useState(true);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const [recentEnclosureId, setRecentEnclosureId] = useState<string | null>(null);
+  const [poiState, setPoiState] = useState<PoiState>({ items: [], status: 'idle', error: null });
   const highCrowdZonesRef = useRef<Set<string>>(new Set());
   const lastGeoErrorRef = useRef<string | null>(null);
   const deliveredProximityRef = useRef<Set<string>>(new Set());
@@ -174,6 +183,7 @@ export default function Home() {
   const headerRef = useRef<HTMLDivElement | null>(null);
   const realtimeChannelRef = useRef<BroadcastChannel | null>(null);
   const clientIdRef = useRef<string>(`client-${Math.random().toString(36).slice(2)}`);
+  const poiControllerRef = useRef<AbortController | null>(null);
   const [mapReservedSpace, setMapReservedSpace] = useState(180);
 
   const handleAnimalClick = (animal: Animal) => {
@@ -201,6 +211,36 @@ export default function Home() {
       window.localStorage.setItem(PHOTOS_STORAGE_KEY, JSON.stringify(nextPhotos));
     } catch (error) {
       console.warn('Impossible de sauvegarder les photos', error);
+    }
+  }, []);
+
+  const loadPois = useCallback(async () => {
+    poiControllerRef.current?.abort();
+    const controller = new AbortController();
+    poiControllerRef.current = controller;
+
+    setPoiState((prev) => ({
+      ...prev,
+      status: 'loading',
+      error: null,
+    }));
+
+    try {
+      const nextPois = await fetchPois({ signal: controller.signal });
+      setPoiState({ items: nextPois, status: 'ready', error: null });
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        return;
+      }
+      setPoiState({
+        items: [],
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Une erreur est survenue lors du chargement des POIs.',
+      });
+    } finally {
+      if (poiControllerRef.current === controller) {
+        poiControllerRef.current = null;
+      }
     }
   }, []);
 
@@ -1022,6 +1062,16 @@ export default function Home() {
     if (typeof window === 'undefined') {
       return;
     }
+    void loadPois();
+    return () => {
+      poiControllerRef.current?.abort();
+    };
+  }, [loadPois]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
 
     const updateReservedSpace = () => {
       const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0;
@@ -1080,13 +1130,32 @@ export default function Home() {
             onAnimalClick={handleAnimalClick}
             onUserLocation={handleUserLocation}
             onGeoError={handleGeoError}
-            pois={pois}
+            pois={poiState.items}
             height={mapHeight}
             locationEnabled={locationOptIn}
             visitedEnclosures={visitedEnclosureIds}
             activeEnclosureId={recentEnclosureId}
           />
         </div>
+        {poiState.status === 'loading' && (
+          <div className="pointer-events-none absolute left-1/2 top-6 z-[1200] -translate-x-1/2 rounded-full bg-white/90 px-4 py-2 text-xs font-semibold text-slate-600 shadow">
+            Chargement des points d'intérêt...
+          </div>
+        )}
+        {poiState.status === 'error' && (
+          <div className="absolute left-1/2 top-6 z-[1200] flex -translate-x-1/2 items-center gap-3 rounded-full bg-red-50 px-4 py-2 text-xs font-semibold text-red-600 shadow">
+            <span>{poiState.error ?? 'Erreur lors du chargement des POIs.'}</span>
+            <button
+              type="button"
+              className="rounded-full bg-red-600 px-3 py-1 text-white"
+              onClick={() => {
+                void loadPois();
+              }}
+            >
+              Réessayer
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Modal */}

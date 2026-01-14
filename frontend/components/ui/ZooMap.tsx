@@ -30,13 +30,6 @@ const poiLabels: Record<Poi['category'], string> = {
   other: 'Autres',
 };
 
-const poiGradients: Record<Poi['category'], string> = {
-  animals: 'linear-gradient(135deg, #b45309, #f97316)',
-  plants: 'linear-gradient(135deg, #15803d, #4ade80)',
-  practical: 'linear-gradient(135deg, #1d4ed8, #60a5fa)',
-  other: 'linear-gradient(135deg, #6b7280, #cbd5f5)',
-};
-
 const poiGlyphs: Record<Poi['category'], string> = {
   animals: '🐾',
   plants: '🌿',
@@ -48,8 +41,28 @@ const poiCategories: Poi['category'][] = ['animals', 'plants', 'practical', 'oth
 
 const KM0_LIVE_HUB_ID = 'km0-live-hub';
 
-const createPoiIcon = (category: Poi['category']) =>
-  L.divIcon({
+type AffluenceMeta = { value: number; label: string; color: string };
+
+const describeAffluence = (value: number): AffluenceMeta => {
+  const normalized = Math.round(Math.max(0, Math.min(100, value)));
+  if (normalized >= 70) {
+    return { value: normalized, label: 'Forte', color: '#dc2626' };
+  }
+  if (normalized >= 40) {
+    return { value: normalized, label: 'Modérée', color: '#f97316' };
+  }
+  return { value: normalized, label: 'Faible', color: '#16a34a' };
+};
+
+const escapeAttribute = (value: string) => value.replace(/"/g, '&quot;');
+
+const createPoiIcon = (poi: Poi) => {
+  const safeIconUrl = poi.iconUrl ? escapeAttribute(poi.iconUrl) : null;
+  const bubbleContent = safeIconUrl
+    ? `<img src="${safeIconUrl}" alt="" style="width:100%;height:100%;object-fit:contain;" />`
+    : `<span style="font-size:16px;line-height:1;color:#0f172a;">${poiGlyphs[poi.category]}</span>`;
+
+  return L.divIcon({
     className: 'custom-poi-marker',
     html: `
       <div style="display:flex;flex-direction:column;align-items:center;gap:2px;transform:translateY(-4px);">
@@ -57,21 +70,20 @@ const createPoiIcon = (category: Poi['category']) =>
           display:inline-flex;
           align-items:center;
           justify-content:center;
-          font-size:14px;
-          color:#fff;
           width:32px;
           height:32px;
           border-radius:9999px 9999px 9999px 0;
           border:2px solid rgba(255,255,255,0.9);
-          background:${poiGradients[category]};
+          background:#ffffff;
           box-shadow:0 6px 12px rgba(0,0,0,0.35);
           transform:rotate(-15deg);
-        ">${poiGlyphs[category]}</span>
+          overflow:hidden;
+        ">${bubbleContent}</span>
         <span style="
           width:6px;
           height:10px;
           border-radius:9999px;
-          background:${poiColors[category]};
+          background:${poiColors[poi.category]};
           opacity:0.9;
         "></span>
       </div>
@@ -79,6 +91,7 @@ const createPoiIcon = (category: Poi['category']) =>
     iconSize: [30, 40],
     iconAnchor: [15, 34],
   });
+};
 
 const FALLBACK_CENTER: [number, number] = [47.734537, 7.350343];
 
@@ -290,8 +303,8 @@ export default function ZooMap({
       setUserPosition(null);
       setUserAccuracy(null);
       setInitialCenter(FALLBACK_CENTER);
-      
-      
+
+
       return;
     }
 
@@ -330,7 +343,7 @@ export default function ZooMap({
         center={initialCenter}
         zoom={userPosition ? 17 : 16}
         minZoom={15}
-        maxZoom={18}
+        maxZoom={20}
         zoomSnap={0.25}
         zoomDelta={0.5}
         scrollWheelZoom
@@ -349,11 +362,11 @@ export default function ZooMap({
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxZoom={18}
-          maxNativeZoom={18}
+          maxZoom={20}
+          maxNativeZoom={19}
         />
 
-        
+
 
         {animals.map((animal) => {
           if (!visitedSet.has(animal.id)) {
@@ -386,51 +399,69 @@ export default function ZooMap({
               />
             ))}
 
-        {filteredPois.map((poi) => (
-          <Marker
-            key={`poi-${poi.id}`}
-            position={[poi.latitude, poi.longitude]}
-            icon={createPoiIcon(poi.category)}
-          >
-            <Popup>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-gray-900">{poi.name}</h3>
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
-                    style={{ backgroundColor: poiColors[poi.category] }}
-                  >
-                    {poiLabels[poi.category]}
-                  </span>
+        {filteredPois.map((poi) => {
+          const affluenceMeta = typeof poi.affluence === 'number' ? describeAffluence(poi.affluence) : null;
+          return (
+            <Marker
+              key={`poi-${poi.id}`}
+              position={[poi.latitude, poi.longitude]}
+              icon={createPoiIcon(poi)}
+            >
+              <Popup>
+                <div className="space-y-3 text-sm w-64">
+                  <div className="flex items-center gap-2">
+                    {poi.iconUrl && (
+                      <img
+                        src={poi.iconUrl}
+                        alt=""
+                        className="h-6 w-6 rounded-full border border-gray-200 bg-white object-contain p-0.5"
+                        loading="lazy"
+                      />
+                    )}
+                    <div className="flex flex-col">
+                      <h3 className="font-semibold text-gray-900">{poi.name}</h3>
+                      {poi.sourceType && (
+                        <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                          {poi.sourceType}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {poi.imageUrl && (
+                    <img
+                      src={poi.imageUrl}
+                      alt={poi.name}
+                      className="h-32 w-full rounded-md object-cover"
+                      loading="lazy"
+                    />
+                  )}
+                  {affluenceMeta && (
+                    <div className="flex items-center justify-between rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+                      <span>Affluence</span>
+                      <span className="text-base font-bold text-slate-900">{affluenceMeta.value}</span>
+                    </div>
+                  )}
+                  {poi.description && (
+                    <div
+                      className="space-y-2 text-xs text-gray-600"
+                      dangerouslySetInnerHTML={{ __html: poi.description }}
+                    />
+                  )}
+                  {poi.linkUrl && (
+                    <a
+                      href={poi.linkUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:underline"
+                    >
+                      Plus d’informations ↗
+                    </a>
+                  )}
                 </div>
-                {poi.imageUrl && (
-                  <img
-                    src={poi.imageUrl}
-                    alt={poi.name}
-                    className="h-32 w-full rounded-md object-cover"
-                    loading="lazy"
-                  />
-                )}
-                {poi.description && (
-                  <div
-                    className="space-y-2 text-xs text-gray-600"
-                    dangerouslySetInnerHTML={{ __html: poi.description }}
-                  />
-                )}
-                {poi.linkUrl && (
-                  <a
-                    href={poi.linkUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:underline"
-                  >
-                    Plus d’informations ↗
-                  </a>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+              </Popup>
+            </Marker>
+          );
+        })}
 
         {userPosition && (
           <>

@@ -11,10 +11,10 @@ export function ZooLogo({ className }: ZooLogoProps) {
       <Image
         src="/brand/zoo-logo.png"
         alt="Parc Zoologique et Botanique de Mulhouse"
-        width={380}
-        height={240}
+        width={520}
+        height={180}
         priority
-        className="h-12 w-auto object-contain"
+        className="h-16 md:h-20 w-auto object-contain"
       />
     </div>
   );

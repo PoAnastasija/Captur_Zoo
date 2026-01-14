@@ -1,0 +1,30 @@
+services:
+  app:
+    build: .
+    restart: always
+    ports:
+      - "$PORT:$PORT"
+    env_file:
+      .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql
+    container_name: mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping"]
+      interval: 2s
+      retries: 5
+    environment:
+      - MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD
+      - MYSQL_DATABASE=$MYSQL_DATABASE
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./pocket_zoo_database.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  mysql-data:

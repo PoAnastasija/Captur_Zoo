@@ -13,6 +13,14 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
 const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
 const AUTH_TOKEN_KEY = 'captur_zoo_auth_token';
 const AUTH_USERNAME_KEY = 'captur_zoo_username';
+export const AUTH_CHANGED_EVENT = 'captur_zoo_auth_changed';
+
+const notifyAuthChange = (token: string | null) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: { token } }));
+};
 
 interface AuthButtonProps {
   className?: string;
@@ -68,6 +76,7 @@ export function AuthButton({ className = '' }: AuthButtonProps) {
         localStorage.setItem(AUTH_USERNAME_KEY, inputUsername.trim());
         setIsAuthenticated(true);
         setUsername(inputUsername.trim());
+        notifyAuthChange(data.token);
         setDialogOpen(false);
         setInputUsername('');
       } else {
@@ -85,6 +94,7 @@ export function AuthButton({ className = '' }: AuthButtonProps) {
     localStorage.removeItem(AUTH_USERNAME_KEY);
     setIsAuthenticated(false);
     setUsername('');
+    notifyAuthChange(null);
   };
 
   const openDialog = (loginMode: boolean) => {

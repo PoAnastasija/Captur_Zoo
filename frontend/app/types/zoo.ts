@@ -34,6 +34,9 @@ export interface Poi {
   category: PoiCategory;
   description?: string;
   imageUrl?: string | null;
+  iconUrl?: string | null;
+  affluence?: number | null;
+  sourceType?: string | null;
   linkUrl?: string | null;
 }
 
