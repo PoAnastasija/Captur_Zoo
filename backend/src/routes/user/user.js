@@ -20,7 +20,7 @@ user_router.get('/animals', verify_auth, async (req, res) => {
     if (!account)
         return res.status(404).json({ msg: "Not found" });
 
-    const animals = JSON.parse(fs.readFileSync("pois.json", "utf8")).filter(p => p.type === "animaux");
+    const animals = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../pois.json"), "utf8")).filter(p => p.type === "animaux");
     const unlocked_animals = await get_user_unlocked_animals(connection, req.token_id);
 
     const output = animals.map(animal => {
