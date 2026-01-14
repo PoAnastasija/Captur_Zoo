@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { MapPin, Users, Sparkles, Camera, Activity } from 'lucide-react';
-import { Animal } from '@/types/zoo';
+import { Animal } from '@/app/types/zoo';
 import {
   Dialog,
   DialogContent,

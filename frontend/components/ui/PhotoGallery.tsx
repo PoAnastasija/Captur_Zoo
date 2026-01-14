@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { ChangeEvent, useMemo, useRef } from 'react';
 import { CheckCircle2, Circle, Lock } from 'lucide-react';
-import { Animal, CaptureIntent } from '@/types/zoo';
+import { Animal, CaptureIntent } from '@/app/types/zoo';
 import {
   Dialog,
   DialogClose,
