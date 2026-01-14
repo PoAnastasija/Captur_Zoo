@@ -21,7 +21,7 @@ RUN python3 -m pip install --upgrade pip \
 	&& python3 -m pip install --no-cache-dir --no-build-isolation -r /tmp/requirements.txt
 
 # Install Node.js dependencies
-COPY package.json package-lock.json ./
+COPY package.json ./
 RUN npm install --production
 
 # Copy application source
