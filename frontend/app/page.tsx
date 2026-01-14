@@ -439,8 +439,11 @@ export default function Home() {
 
     try {
       poiSocketConnectingRef.current = true;
+      // Vercel doesn't support WebSocket upgrades, use polling only
+      const isVercel = POI_SOCKET_URL.includes('vercel.app');
       const socket = io(POI_SOCKET_URL, {
-        transports: ['polling', 'websocket'],
+        transports: isVercel ? ['polling'] : ['polling', 'websocket'],
+        upgrade: !isVercel,
         autoConnect: true,
         reconnection: false,
       });
