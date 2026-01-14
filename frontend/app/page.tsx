@@ -16,8 +16,9 @@ import { AuthButton } from '@/components/ui/AuthButton';
 import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
-  Camera,
   BookOpenCheck,
+  Camera,
+  CheckCircle2,
   Cloud,
   CloudLightning,
   CloudRain,
@@ -26,6 +27,7 @@ import {
   Settings,
   Sun,
   Wind,
+  XCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -98,6 +100,22 @@ const categoryEmoji: Record<Animal['category'], string> = {
   reptile: '🐊',
   amphibian: '🐸',
 };
+const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost').replace(/\/$/, '');
+const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
+const BACKEND_BASE_URL = `${BACKEND_URL}:${BACKEND_PORT}`;
+const DETECTION_API_URL = `${BACKEND_BASE_URL}/api/detect`;
+const detectionMethodLabels: Record<string, string> = {
+  yolo: 'YOLOv8',
+  detectron2: 'Detectron2',
+  classifier: 'ResNet50',
+};
+
+const formatDetectionSummary = (analysis: DetectionAnalysis) => {
+  const methodLabel = detectionMethodLabels[analysis.method ?? ''] ?? 'analyse IA';
+  const occurrences = Math.max(analysis.count ?? 0, 1);
+  const countLabel = `${occurrences} détection${occurrences > 1 ? 's' : ''}`;
+  return `${methodLabel} · ${countLabel}`;
+};
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
 const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || '3001';
@@ -161,6 +179,20 @@ interface PoiState {
   error: string | null;
 }
 
+type DetectionAnalysis = {
+  animal_present: boolean;
+  method: string | null;
+  count: number;
+  classifier_score?: number;
+};
+
+type DetectionApiResponse = {
+  ok: boolean;
+  analysis?: DetectionAnalysis;
+  error?: string;
+  details?: string;
+};
+
 
 const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
   ssr: false,
@@ -196,6 +228,8 @@ export default function Home() {
   const [locationOptIn, setLocationOptIn] = useState(true);
   const [cameraAccessEnabled, setCameraAccessEnabled] = useState(true);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
+  const [analysisState, setAnalysisState] = useState<PhotoAnalysisState>({ status: 'idle' });
+  const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
   const [recentEnclosureId, setRecentEnclosureId] = useState<string | null>(null);
   const [poiState, setPoiState] = useState<PoiState>({ items: [], status: 'idle', error: null });
   const highCrowdZonesRef = useRef<Set<string>>(new Set());
@@ -213,6 +247,8 @@ export default function Home() {
   const lastPositionMessageRef = useRef<number>(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [mapReservedSpace, setMapReservedSpace] = useState(180);
+  const analysisDialogVisible =
+    analysisDialogOpen && analysisState.status !== 'pending' && analysisState.status !== 'idle';
 
   const handleAnimalClick = (animal: Animal) => {
     setSelectedAnimal(animal);
@@ -948,11 +984,100 @@ export default function Home() {
     });
   };
 
+  const requestDetection = useCallback(async (
+    file: File,
+    metadata?: Record<string, string>
+  ): Promise<DetectionAnalysis> => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    if (metadata) {
+      Object.entries(metadata).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
+    }
+
+    const response = await fetch(DETECTION_API_URL, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const payload = (await response.json().catch(() => null)) as DetectionApiResponse | null;
+    if (!response.ok || !payload?.ok || !payload.analysis) {
+      throw new Error(payload?.error || payload?.details || 'Analyse indisponible');
+    }
+
+    return payload.analysis;
+  }, []);
+
   const handlePhotoUpload = useCallback(
-    async (file: File, intent: CaptureIntent) => {
+    async (file: File, intent: CaptureIntent): Promise<boolean> => {
+      const targetAnimal = mapAnimals.find((animal) => animal.id === intent.animalId) ?? null;
+
+      if (intent.step !== 'animal') {
+        setAnalysisState({ status: 'idle' });
+      }
+
       try {
+        let detectionAnalysis: DetectionAnalysis | null = null;
+
+        if (intent.step === 'animal') {
+          setAnalysisState({
+            status: 'pending',
+            message: targetAnimal
+              ? `Analyse de ${targetAnimal.name} en cours...`
+              : 'Analyse automatique en cours...',
+            animalName: targetAnimal?.name ?? undefined,
+            step: intent.step,
+          });
+
+          try {
+            const analysis = await requestDetection(file, {
+              animalId: intent.animalId,
+              step: intent.step,
+            });
+
+            if (!analysis.animal_present) {
+              addNotification({
+                title: 'Animal non détecté',
+                body: 'Impossible de valider la capture. Assure-toi que l’animal occupe bien le cadre.',
+                type: 'alert',
+              });
+              setAnalysisState({
+                status: 'error',
+                message: targetAnimal ? `${targetAnimal.name} non détecté` : 'Animal non détecté',
+                detail: 'Assure-toi que l’animal est net et visible pour valider la capture.',
+                animalName: targetAnimal?.name ?? undefined,
+                step: intent.step,
+              });
+              setAnalysisDialogOpen(true);
+              return false;
+            }
+
+            detectionAnalysis = analysis;
+          } catch (analysisError) {
+            console.error('Detection request failed', analysisError);
+            const errorMessage =
+              analysisError instanceof Error ? analysisError.message : 'Analyse indisponible';
+            addNotification({
+              title: 'Analyse indisponible',
+              body: errorMessage,
+              type: 'alert',
+            });
+            setAnalysisState({
+              status: 'error',
+              message: targetAnimal
+                ? `Analyse impossible - ${targetAnimal.name}`
+                : 'Analyse impossible',
+              detail: errorMessage,
+              animalName: targetAnimal?.name ?? undefined,
+              step: intent.step,
+            });
+            setAnalysisDialogOpen(true);
+            return false;
+          }
+        }
+
         const dataUrl = await readFileAsDataUrl(file);
-        const targetAnimal = mapAnimals.find((animal) => animal.id === intent.animalId) ?? null;
         const filenameBase = targetAnimal ? targetAnimal.name.replace(/\s+/g, '-').toLowerCase() : 'capture';
         const filename = `${filenameBase}-${intent.step}-${Date.now()}.jpg`;
         const photo: CapturedPhoto = {
@@ -963,30 +1088,64 @@ export default function Home() {
           dataUrl,
           filename,
         };
+
         setCapturedPhotos((prev) => {
           const next = [photo, ...prev];
           persistCapturedPhotos(next);
           return next;
         });
+
         downloadPhoto(dataUrl, filename);
+
+        const detectionSummary = detectionAnalysis ? formatDetectionSummary(detectionAnalysis) : null;
+
         addNotification({
-          title: 'Photo enregistrée',
+          title: 'Photo validée',
           body: targetAnimal
-            ? `${targetAnimal.name} (${captureStepLabel[intent.step]}) ajouté à ton Zoodex.`
-            : 'Nouvelle capture ajoutée à ton Zoodex.',
+            ? `${targetAnimal.name} (${captureStepLabel[intent.step]}) ajouté à ton Zoodex${detectionSummary ? ` · ${detectionSummary}` : ''}.`
+            : `Nouvelle capture ajoutée à ton Zoodex${detectionSummary ? ` · ${detectionSummary}` : ''}.`,
           type: 'event',
         });
+
+        if (intent.step === 'animal') {
+          setAnalysisState({
+            status: 'success',
+            message: targetAnimal ? `${targetAnimal.name} détecté` : 'Animal détecté',
+            detail: detectionSummary ?? undefined,
+            animalName: targetAnimal?.name ?? undefined,
+            step: intent.step,
+          });
+          setAnalysisDialogOpen(true);
+        } else {
+          setAnalysisState({ status: 'idle' });
+        }
+
         unlockBadge('shutterbug');
+        return true;
       } catch (error) {
         console.error('Photo capture error', error);
+          const errorMessage = error instanceof Error ? error.message : 'Impossible de sauvegarder la photo.';
         addNotification({
           title: 'Erreur capture',
-          body: 'Impossible de sauvegarder la photo. Réessaie dans un instant.',
+            body: errorMessage,
           type: 'alert',
         });
+        if (intent.step === 'animal') {
+          setAnalysisState({
+            status: 'error',
+              message: 'Erreur de capture',
+              detail: errorMessage,
+            animalName: targetAnimal?.name ?? undefined,
+            step: intent.step,
+          });
+          setAnalysisDialogOpen(true);
+        } else {
+          setAnalysisState({ status: 'idle' });
+        }
+        return false;
       }
     },
-    [addNotification, downloadPhoto, mapAnimals, persistCapturedPhotos, readFileAsDataUrl, unlockBadge]
+    [addNotification, downloadPhoto, mapAnimals, persistCapturedPhotos, readFileAsDataUrl, requestDetection, unlockBadge]
   );
 
   const handleBadgeToggle = useCallback((badgeId: string, shouldUnlock: boolean) => {
@@ -1110,6 +1269,13 @@ export default function Home() {
     resetNavToMap();
     mapSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [resetNavToMap, mapSectionRef]);
+
+  const handleAnalysisDialogChange = useCallback((open: boolean) => {
+    setAnalysisDialogOpen(open);
+    if (!open) {
+      setAnalysisState((prev) => (prev.status === 'pending' ? prev : { status: 'idle' }));
+    }
+  }, []);
 
   const renderWeatherChip = () => {
     if (weatherState.status === 'loading') {
@@ -1367,6 +1533,7 @@ export default function Home() {
         onCaptureEnclosure={handleCaptureEnclosure}
         onUploadPhoto={handlePhotoUpload}
         cameraEnabled={cameraAccessEnabled}
+        analysisState={analysisState}
       />
       <CrowdReportPanel
         animals={mapAnimals}
@@ -1392,6 +1559,53 @@ export default function Home() {
         cameraEnabled={cameraAccessEnabled}
         onToggleCamera={handleToggleCamera}
       />
+      <Dialog open={analysisDialogVisible} onOpenChange={handleAnalysisDialogChange}>
+        <DialogContent
+          showCloseButton={false}
+          className="max-w-sm border-none bg-white/95 text-[#1f2a24] shadow-2xl"
+        >
+          <DialogHeader>
+            <div className="flex items-start gap-3">
+              <div
+                className={`flex h-11 w-11 items-center justify-center rounded-full ${
+                  analysisState.status === 'success'
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : 'bg-red-50 text-red-600'
+                }`}
+              >
+                {analysisState.status === 'success' ? (
+                  <CheckCircle2 className="h-6 w-6" />
+                ) : (
+                  <XCircle className="h-6 w-6" />
+                )}
+              </div>
+              <div>
+                <DialogTitle className="text-xl">
+                  {analysisState.status === 'success' ? 'Analyse réussie' : 'Analyse impossible'}
+                </DialogTitle>
+                <DialogDescription className="text-sm text-[#4a5a51]">
+                  {analysisState.message 
+                    ?? (analysisState.status === 'success'
+                      ? 'L’animal a été détecté avec succès.'
+                      : 'La détection n’a pas pu confirmer la présence d’un animal.')}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          {analysisState.detail && (
+            <p className="rounded-2xl bg-[#f6f1e7] px-4 py-2 text-xs text-[#5c4f40]">
+              {analysisState.detail}
+            </p>
+          )}
+          <button
+            type="button"
+            className="mt-4 w-full rounded-2xl bg-gradient-to-r from-[#0d4f4a] to-[#127c63] px-4 py-2 text-sm font-semibold text-white shadow-lg"
+            onClick={() => handleAnalysisDialogChange(false)}
+          >
+            Compris
+          </button>
+        </DialogContent>
+      </Dialog>
       {badgeToast && (
         <div className="pointer-events-none fixed inset-x-0 top-28 z-[1500] flex justify-center px-4">
           <div className="badge-pop w-full max-w-sm rounded-3xl border border-[#f4d9a7] bg-[#fff9f0]/95 p-5 text-center shadow-2xl">
