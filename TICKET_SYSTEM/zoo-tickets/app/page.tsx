@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Ticket, TicketStatus, TicketCategory } from '@/types/tickets';
-import { employees } from '@/components/data/employees';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -15,141 +14,25 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { X, HelpCircle, Mail, Phone, Clock, Calendar, Paperclip, Users } from 'lucide-react';
 
-// Données de démonstration
-const mockTickets: Ticket[] = [
-  {
-    id: 'TKT-001',
-    title: 'Modification technique',
-    description: 'Bonjour,\n\nPourriez-vous ajouter en pop-up le menu de noël que je vous joins pour le 24 et 25 décembre, tout en précisant que celui-ci sera un menu unique.\n\nAussi, nous fermerons le restaurant à partir du 30 décembre jusqu\'au 2 janvier inclus, merci de le mentionner.',
-    category: 'maintenance',
-    priority: 'medium',
-    status: 'in-progress',
-    createdBy: employees[1],
-    assignedTo: employees[0],
-    watchers: [],
-    location: { zone: 'TT TIRAMISU' },
-    createdAt: new Date('2025-12-23T10:00:00'),
-    updatedAt: new Date('2025-12-23T10:30:00'),
-    dueDate: new Date('2025-12-23T18:00:00'),
-    attachments: [
-      { id: 'att-1', filename: 'menu-noel.pdf', url: '', type: 'pdf', size: 1024000, uploadedBy: employees[1], uploadedAt: new Date() },
-      { id: 'att-2', filename: 'photo-plat.jpg', url: '', type: 'image', size: 512000, uploadedBy: employees[1], uploadedAt: new Date() },
-    ],
-    comments: [],
-    tags: [],
-    metadata: {
-      interlocuteur: 'Tina NAZARYAN',
-      email: 'tinashirv@gmail.com',
-      phone: '01 81 81 70 71',
-      url: 'https://www.tthistoirerestaurant.com',
-      source: 'Mail',
-      timeEstimate: '00:00',
-    },
-  },
-  {
-    id: 'TKT-002',
-    title: 'Demande de modification',
-    description: 'Modification du menu',
-    category: 'maintenance',
-    priority: 'medium',
-    status: 'in-progress',
-    createdBy: employees[1],
-    assignedTo: employees[0],
-    watchers: [],
-    location: { zone: 'ALEXANDRE TRUPIANO' },
-    createdAt: new Date('2025-12-24T09:00:00'),
-    updatedAt: new Date('2025-12-24T09:30:00'),
-    dueDate: new Date('2025-12-24T17:00:00'),
-    attachments: [],
-    comments: [],
-    tags: [],
-    metadata: {},
-  },
-  {
-    id: 'TKT-003',
-    title: 'Support technique',
-    description: 'Problème technique à résoudre',
-    category: 'maintenance',
-    priority: 'high',
-    status: 'in-progress',
-    createdBy: employees[1],
-    assignedTo: employees[0],
-    watchers: [],
-    location: { zone: 'TT TIRAMISU' },
-    createdAt: new Date('2025-12-23T14:00:00'),
-    updatedAt: new Date('2025-12-23T14:30:00'),
-    dueDate: new Date('2025-12-23T20:00:00'),
-    attachments: [],
-    comments: [],
-    tags: [],
-    metadata: {},
-  },
-  {
-    id: 'TKT-004',
-    title: 'Mise à jour du site',
-    description: 'Demande de mise à jour',
-    category: 'maintenance',
-    priority: 'medium',
-    status: 'in-progress',
-    createdBy: employees[1],
-    assignedTo: employees[0],
-    watchers: [],
-    location: { zone: 'SOCIETE DE CONSTRUCTIONS METALLIQUES' },
-    createdAt: new Date('2025-12-19T11:00:00'),
-    updatedAt: new Date('2025-12-19T11:30:00'),
-    dueDate: new Date('2025-12-19T18:00:00'),
-    attachments: [],
-    comments: [],
-    tags: [],
-    metadata: {},
-  },
-  {
-    id: 'TKT-005',
-    title: 'Configuration serveur',
-    description: 'Configuration nécessaire',
-    category: 'maintenance',
-    priority: 'low',
-    status: 'in-progress',
-    createdBy: employees[1],
-    assignedTo: employees[0],
-    watchers: [],
-    location: { zone: 'AUBERGE DU MOULIN' },
-    createdAt: new Date('2025-12-05T08:00:00'),
-    updatedAt: new Date('2025-12-05T08:30:00'),
-    dueDate: new Date('2025-12-05T16:00:00'),
-    attachments: [],
-    comments: [],
-    tags: [],
-    metadata: {},
-  },
-  {
-    id: 'TKT-006',
-    title: 'Optimisation performance',
-    description: 'Amélioration des performances',
-    category: 'maintenance',
-    priority: 'medium',
-    status: 'in-progress',
-    createdBy: employees[1],
-    assignedTo: employees[0],
-    watchers: [],
-    location: { zone: 'RTL CARROSSERIE INDUSTRIELLE' },
-    createdAt: new Date('2025-12-19T13:00:00'),
-    updatedAt: new Date('2025-12-19T13:30:00'),
-    dueDate: new Date('2025-12-19T19:00:00'),
-    attachments: [],
-    comments: [],
-    tags: [],
-    metadata: {},
-  },
-];
+// The frontend no longer uses in-file mocks; it will fetch tickets from the API.
 
 export default function TicketsPage() {
-  const [tickets] = useState<Ticket[]>(mockTickets);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [activeTab, setActiveTab] = useState<'list' | 'new' | 'stats'>('list');
   const [statusTab, setStatusTab] = useState<'pending' | 'processed' | 'trash'>('processed');
   const [filterValue, setFilterValue] = useState('all');
   const [detailTab, setDetailTab] = useState<'details' | 'attachments' | 'team'>('details');
+  const [employees, setEmployees] = useState<any[]>([])
+
+  // new ticket form state
+  const [formTitle, setFormTitle] = useState('')
+  const [formDescription, setFormDescription] = useState('')
+  const [formCategory, setFormCategory] = useState<TicketCategory>('maintenance')
+  const [formPriority, setFormPriority] = useState<'low'|'medium'|'high'|'urgent'>('low')
+  const [formAssignee, setFormAssignee] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [flash, setFlash] = useState<string | null>(null)
 
   const stats = useMemo(() => ({
     pending: 0,
@@ -165,6 +48,41 @@ export default function TicketsPage() {
       return true;
     });
   }, [tickets, statusTab]);
+
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      try {
+        const res = await fetch('/api/tickets')
+        const data = await res.json()
+        const parsed = (data || []).map((t: any) => ({
+          ...t,
+          createdAt: t.createdAt ? new Date(t.createdAt) : undefined,
+          updatedAt: t.updatedAt ? new Date(t.updatedAt) : undefined,
+          dueDate: t.dueDate ? new Date(t.dueDate) : undefined,
+          resolvedAt: t.resolvedAt ? new Date(t.resolvedAt) : undefined,
+          attachments: (t.attachments || []).map((a: any) => ({ ...a, uploadedAt: a.uploadedAt ? new Date(a.uploadedAt) : undefined })),
+          comments: (t.comments || []).map((c: any) => ({ ...c, createdAt: c.createdAt ? new Date(c.createdAt) : undefined })),
+        }))
+        if (mounted) setTickets(parsed)
+      } catch (e) {
+        console.error('Failed to load tickets', e)
+      }
+    }
+    load()
+    // load employees for the new ticket form
+    async function loadEmployees() {
+      try {
+        const res = await fetch('/api/employees')
+        const data = await res.json()
+        if (mounted) setEmployees(data || [])
+      } catch (e) {
+        console.error('Failed to load employees', e)
+      }
+    }
+    loadEmployees()
+    return () => { mounted = false }
+  }, [])
 
   const handleTicketClick = (ticket: Ticket) => {
     setSelectedTicket(ticket);
@@ -262,6 +180,99 @@ export default function TicketsPage() {
       <div className="max-w-7xl mx-auto px-6 py-6 flex gap-6">
         {/* Liste des tickets */}
         <div className={`${selectedTicket ? 'w-2/3' : 'w-full'} transition-all`}>
+          {activeTab === 'new' ? (
+            <div className="bg-white rounded shadow p-6">
+              <h2 className="text-lg font-medium mb-4">Créer un nouveau ticket</h2>
+              {flash && <div className="mb-3 text-sm text-green-700">{flash}</div>}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Titre</label>
+                  <input value={formTitle} onChange={e => setFormTitle(e.target.value)} className="w-full px-3 py-2 border rounded" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Description</label>
+                  <textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} className="w-full px-3 py-2 border rounded h-32" />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Catégorie</label>
+                    <select value={formCategory} onChange={e => setFormCategory(e.target.value as TicketCategory)} className="w-full px-2 py-2 border rounded">
+                      <option value="maintenance">Maintenance</option>
+                      <option value="animal-health">Santé animale</option>
+                      <option value="visitor-incident">Incident visiteur</option>
+                      <option value="supply">Approvisionnement</option>
+                      <option value="other">Autre</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Priorité</label>
+                    <select value={formPriority} onChange={e => setFormPriority(e.target.value as any)} className="w-full px-2 py-2 border rounded">
+                      <option value="low">Faible</option>
+                      <option value="medium">Moyenne</option>
+                      <option value="high">Haute</option>
+                      <option value="urgent">Urgente</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Assigner à</label>
+                    <select value={formAssignee ?? ''} onChange={e => setFormAssignee(e.target.value || null)} className="w-full px-2 py-2 border rounded">
+                      <option value="">— Non assigné —</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.name} — {emp.role}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button onClick={async () => {
+                    if (!formTitle.trim()) { setFlash('Le titre est requis'); return }
+                    setSubmitting(true)
+                    setFlash(null)
+                    try {
+                      const payload: any = {
+                        title: formTitle,
+                        description: formDescription,
+                        category: formCategory,
+                        priority: formPriority,
+                        status: 'open',
+                        createdBy: { id: employees[0]?.id ?? 'emp-1' },
+                      }
+                      if (formAssignee) payload.assignedTo = { id: formAssignee }
+                      const res = await fetch('/api/tickets', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                      })
+                      if (!res.ok) throw new Error('Échec création')
+                      const created = await res.json()
+                      // convert dates
+                      const parsed = { ...created, createdAt: created.createdAt ? new Date(created.createdAt) : new Date(created.createdAt), updatedAt: created.updatedAt ? new Date(created.updatedAt) : new Date() }
+                      setTickets(prev => [parsed as any, ...prev])
+                      setFlash('Ticket créé')
+                      // show the list and switch to the 'pending' status so the new open ticket is visible
+                      setActiveTab('list')
+                      setStatusTab('pending')
+                      // reset
+                      setFormTitle('')
+                      setFormDescription('')
+                      setFormAssignee(null)
+                    } catch (e) {
+                      console.error(e)
+                      setFlash('Erreur lors de la création')
+                    } finally { setSubmitting(false) }
+                  }} disabled={submitting}>
+                    {submitting ? 'Création...' : 'Créer le ticket'}
+                  </Button>
+                  <Button variant="outline" onClick={() => { setFormTitle(''); setFormDescription(''); setFormAssignee(null); setFlash(null) }}>Effacer</Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* existing list rendering continues below */}
+            </>
+          )}
           {/* Info message */}
           <div className="mb-4 text-sm text-gray-600">
             Lorsqu'un ticket est sélectionné, vous pouvez naviguer avec les flèches du clavier. Appuyez sur <kbd className="px-2 py-1 bg-gray-200 rounded">Echap</kbd> pour fermer.
@@ -479,19 +490,19 @@ export default function TicketsPage() {
             <div className="flex-1 overflow-y-auto p-6">
               {detailTab === 'details' && (
                 <div className="prose prose-sm max-w-none">
-                  {selectedTicket.description.split('\n\n').map((paragraph, idx) => {
+                  {selectedTicket.description.split('\n\n').map((paragraph: string, idx: number) => {
                     // Mettre en évidence les mots clés
                     const highlightedText = paragraph
                       .replace(/menu/gi, '<mark class="bg-yellow-200">menu</mark>')
                       .replace(/noël/gi, '<mark class="bg-yellow-200">noël</mark>');
                     
                     return (
-                      <p 
-                        key={idx} 
+                      <p
+                        key={idx}
                         className="text-gray-700 mb-4"
                         dangerouslySetInnerHTML={{ __html: highlightedText }}
                       />
-                    );
+                    )
                   })}
                 </div>
               )}
@@ -499,7 +510,7 @@ export default function TicketsPage() {
               {detailTab === 'attachments' && (
                 <div className="space-y-2">
                   {selectedTicket.attachments.length > 0 ? (
-                    selectedTicket.attachments.map((attachment) => (
+                    selectedTicket.attachments.map((attachment: any) => (
                       <div
                         key={attachment.id}
                         className="flex items-center gap-3 p-3 border rounded hover:bg-gray-50"
