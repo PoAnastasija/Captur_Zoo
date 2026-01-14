@@ -4,6 +4,8 @@ import Image from 'next/image';
 import { ChangeEvent, useMemo, useRef } from 'react';
 import { CheckCircle2, Circle, Lock } from 'lucide-react';
 import { Animal, CaptureIntent } from '@/app/types/zoo';
+import { CheckCircle2, Circle, Loader2, Lock } from 'lucide-react';
+import { Animal, CaptureIntent, PhotoAnalysisState } from '@/types/zoo';
 import {
   Dialog,
   DialogClose,
@@ -21,8 +23,9 @@ interface PhotoGalleryProps {
   onClose: () => void;
   onCaptureAnimal: (animalId: string) => void;
   onCaptureEnclosure: (animalId: string) => void;
-  onUploadPhoto: (file: File, intent: CaptureIntent) => void;
+  onUploadPhoto: (file: File, intent: CaptureIntent) => Promise<boolean>;
   cameraEnabled: boolean;
+  analysisState: PhotoAnalysisState;
 }
 
 const categoryLabels: Record<Animal['category'], string> = {
@@ -42,6 +45,7 @@ export function PhotoGallery({
   onCaptureEnclosure,
   onUploadPhoto,
   cameraEnabled,
+  analysisState,
 }: PhotoGalleryProps) {
   const uniqueAnimals = useMemo(
     () => Array.from(new Map(animals.map((animal) => [animal.id, animal])).values()),
@@ -50,29 +54,41 @@ export function PhotoGallery({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingCaptureRef = useRef<CaptureIntent | null>(null);
 
+  const isAnalyzing = analysisState.status === 'pending';
+  const analysisMessage = analysisState.message ?? 'Analyse automatique en cours...';
+
   const handleManualCapture = (intent: CaptureIntent) => {
-    if (!cameraEnabled) {
+    if (!cameraEnabled || isAnalyzing) {
       return;
     }
     pendingCaptureRef.current = intent;
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const file = input.files?.[0];
     const pending = pendingCaptureRef.current;
     if (!file || !pending) {
-      event.target.value = '';
+      input.value = '';
       return;
     }
-    onUploadPhoto(file, pending);
-    if (pending.step === 'enclosure') {
-      onCaptureEnclosure(pending.animalId);
-    } else {
-      onCaptureAnimal(pending.animalId);
+
+    try {
+      const accepted = await onUploadPhoto(file, pending);
+      if (accepted) {
+        if (pending.step === 'enclosure') {
+          onCaptureEnclosure(pending.animalId);
+        } else {
+          onCaptureAnimal(pending.animalId);
+        }
+      }
+    } catch (error) {
+      console.error('Photo upload failed', error);
+    } finally {
+      pendingCaptureRef.current = null;
+      input.value = '';
     }
-    pendingCaptureRef.current = null;
-    event.target.value = '';
   };
 
   const enclosureSet = useMemo(() => new Set(capturedEnclosures), [capturedEnclosures]);
@@ -121,6 +137,12 @@ export function PhotoGallery({
               disabled={!cameraEnabled}
               onChange={handleFileChange}
             />
+            {isAnalyzing && (
+              <div className="mt-4 flex items-center gap-2 rounded-2xl border border-[#cde3da] bg-white/85 px-4 py-3 text-sm font-semibold text-[#0d4f4a] shadow-sm">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{analysisMessage}</span>
+              </div>
+            )}
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-[#f4e6cf] bg-white/70 px-4 py-3 text-sm text-[#5a3416] shadow-sm">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#c47b1b]">Étape 1 · Panneau</p>
@@ -191,10 +213,12 @@ export function PhotoGallery({
                       <div className="grid gap-3 sm:grid-cols-2">
                         <button
                           type="button"
-                          disabled={!cameraEnabled || enclosureCaptured}
+                          disabled={!cameraEnabled || enclosureCaptured || isAnalyzing}
                           onClick={() => handleManualCapture({ step: 'enclosure', animalId: animal.id })}
                           className={`group/button w-full rounded-2xl border border-[#f3e3c6] bg-[#fff8ec] p-4 text-left shadow-sm transition ${
-                            !cameraEnabled || enclosureCaptured ? 'cursor-not-allowed opacity-70' : 'hover:-translate-y-0.5 hover:shadow-lg'
+                            !cameraEnabled || enclosureCaptured || isAnalyzing
+                              ? 'cursor-not-allowed opacity-70'
+                              : 'hover:-translate-y-0.5 hover:shadow-lg'
                           }`}
                         >
                           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-[#a6611b]">
@@ -210,10 +234,10 @@ export function PhotoGallery({
                         </button>
                         <button
                           type="button"
-                          disabled={!cameraEnabled || !enclosureCaptured || animalCaptured}
+                          disabled={!cameraEnabled || !enclosureCaptured || animalCaptured || isAnalyzing}
                           onClick={() => handleManualCapture({ step: 'animal', animalId: animal.id })}
                           className={`w-full rounded-2xl border border-[#d0e7cf] bg-[#f2fff4] p-4 text-left shadow-sm transition ${
-                            !cameraEnabled || !enclosureCaptured || animalCaptured
+                            !cameraEnabled || !enclosureCaptured || animalCaptured || isAnalyzing
                               ? 'cursor-not-allowed opacity-60'
                               : 'hover:-translate-y-0.5 hover:shadow-lg'
                           }`}
