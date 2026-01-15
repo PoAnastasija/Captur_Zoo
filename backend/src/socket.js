@@ -20,7 +20,6 @@ function initSocket(server) {
 
         socket.on("update_position", (data) => {
             const { latitude, longitude } = data;
-            console.log(latitude, longitude)
             if (latitude !== undefined && longitude !== undefined) {
                 userPositions.set(socket.id, { latitude, longitude });
 
@@ -46,12 +45,10 @@ function initSocket(server) {
 }
 
 function calculatePoiAffluence() {
-    console.log("===============================================================================")
     return pois.map(poi => {
         let affluence = 0;
         userPositions.forEach((pos) => {
             const distance = getDistance(poi.latitude, poi.longitude, pos.latitude, pos.longitude);
-            console.log(distance)
             if (distance <= 30) {
                 affluence++;
             }

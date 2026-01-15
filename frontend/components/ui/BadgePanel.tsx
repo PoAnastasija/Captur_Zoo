@@ -330,6 +330,13 @@ interface ZoodexPanelProps {
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost';
 const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
 
+const normalizeName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
 interface RemoteAnimal {
   name: string;
   latitude: number;
@@ -357,8 +364,11 @@ interface QuizQuestion {
   explanation: string;
 }
 
-// Questions de quiz pour l'ours polaire
-const POLAR_BEAR_QUIZ: QuizQuestion[] = [
+// Animaux éligibles au quiz (matcher sur le nom affiché)
+const QUIZ_ANIMALS = ['ours polaires', 'polar bear', 'loups à crinière', 'maned wolf', 'cercopithèques', 'cercopitheques'];
+
+// Questions de quiz (communes aux animaux supportés)
+const ANIMAL_QUIZ: QuizQuestion[] = [
   {
     question: "Quelle est la nourriture préférée des ours polaires dans la nature ?",
     options: [
@@ -408,7 +418,8 @@ export function ZoodexPanel({
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
-  
+  const [canDisplayGallery, setCanDisplayGallery] = useState(false);
+
   // États pour le quiz
   const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -447,25 +458,42 @@ export function ZoodexPanel({
     if (!remoteAnimals || remoteAnimals.length === 0) {
       return null;
     }
-    return remoteAnimals.map((animal, index) => ({
-      id: `remote-${index}-${animal.name}`,
-      name: animal.name,
-      image: animal.image ?? PLACEHOLDER_IMAGE,
-      captured: Boolean(animal.unlocked),
-      icon: animal.icon ?? null,
-    }));
-  }, [remoteAnimals]);
+
+    const normalizedAnimalsMap = uniqueAnimals.reduce<Record<string, Animal>>((acc, animal) => {
+      acc[normalizeName(animal.name)] = animal;
+      return acc;
+    }, {});
+
+    return remoteAnimals.map((animal, index) => {
+      const detailSource = normalizedAnimalsMap[normalizeName(animal.name)];
+      return {
+        id: `remote-${index}-${animal.name}`,
+        name: animal.name,
+        image: animal.image ?? PLACEHOLDER_IMAGE,
+        captured: Boolean(animal.unlocked),
+        icon: animal.icon ?? null,
+        detailSource,
+      };
+    });
+  }, [remoteAnimals, uniqueAnimals]);
 
   const stats = useMemo(() => {
+    if (!canDisplayGallery) {
+      return { captured: 0, total: 0 };
+    }
     const source = remoteGallery && remoteGallery.length > 0 ? remoteGallery : fallbackGallery;
     const capturedCount = source.filter((animal) => animal.captured).length;
     return {
       captured: capturedCount,
       total: source.length,
     };
-  }, [fallbackGallery, remoteGallery]);
+  }, [canDisplayGallery, fallbackGallery, remoteGallery]);
 
-  const displayCards = remoteGallery && remoteGallery.length > 0 ? remoteGallery : fallbackGallery;
+  const displayCards = canDisplayGallery
+    ? remoteGallery && remoteGallery.length > 0
+      ? remoteGallery
+      : fallbackGallery
+    : [];
 
   useEffect(() => {
     if (!open) {
@@ -477,11 +505,13 @@ export function ZoodexPanel({
       setAuthRequired(true);
       setRemoteAnimals(null);
       setRemoteLoading(false);
+      setCanDisplayGallery(false);
       return;
     }
 
     const controller = new AbortController();
     setAuthRequired(false);
+    setCanDisplayGallery(true);
     setRemoteLoading(true);
     setRemoteError(null);
 
@@ -499,6 +529,7 @@ export function ZoodexPanel({
           if (response.status === 401) {
             setAuthRequired(true);
             setRemoteAnimals(null);
+            setCanDisplayGallery(false);
           }
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.message || `Erreur ${response.status}`);
@@ -525,10 +556,11 @@ export function ZoodexPanel({
   }, [open]);
 
   const isCaptured = selectedAnimal ? capturedSet.has(selectedAnimal.id) : false;
-  
+
   // Vérifier si l'animal sélectionné est un ours polaire
-  const isPolarBear = selectedAnimal?.name.toLowerCase().includes('ours polaire') || 
-                      selectedAnimal?.name.toLowerCase().includes('polar bear');
+  const isQuizAnimal = selectedAnimal
+    ? QUIZ_ANIMALS.some((name) => selectedAnimal.name.toLowerCase().includes(name))
+    : false;
 
   // Fonctions pour gérer le quiz
   const handleAnswerSelect = (answerIndex: number) => {
@@ -538,8 +570,8 @@ export function ZoodexPanel({
 
   const handleValidateAnswer = () => {
     if (selectedAnswer === null) return;
-    
-    const isCorrect = selectedAnswer === POLAR_BEAR_QUIZ[currentQuestion].correctAnswer;
+
+    const isCorrect = selectedAnswer === ANIMAL_QUIZ[currentQuestion].correctAnswer;
     if (isCorrect) {
       setQuizScore(quizScore + 1);
     }
@@ -547,7 +579,7 @@ export function ZoodexPanel({
   };
 
   const handleNextQuestion = () => {
-    if (currentQuestion < POLAR_BEAR_QUIZ.length - 1) {
+    if (currentQuestion < ANIMAL_QUIZ.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(null);
       setShowExplanation(false);
@@ -589,13 +621,10 @@ export function ZoodexPanel({
             </DialogClose>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 sm:px-6">
-            <div className="mb-4 rounded-lg border border-white/60 bg-white/80 p-4 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#0d4f4a]">Animaux capturés</p>
-              <p className="mt-2 text-3xl font-bold text-[#1d2c27]">{stats.captured} / {stats.total}</p>
-            </div>
-            {authRequired && (
-              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Connecte-toi pour synchroniser ta progression et ta galerie personnalisée.
+            {canDisplayGallery && (
+              <div className="mb-4 rounded-lg border border-white/60 bg-white/80 p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#0d4f4a]">Animaux capturés</p>
+                <p className="mt-2 text-3xl font-bold text-[#1d2c27]">{stats.captured} / {stats.total}</p>
               </div>
             )}
             {remoteError && (
@@ -608,58 +637,64 @@ export function ZoodexPanel({
                 Chargement de ta galerie...
               </div>
             )}
-            <div className="w-full rounded-lg p-3 sm:p-4 md:p-6">
-              <div className="space-y-3 sm:space-y-4 md:space-y-5">
-                {displayCards.map((card) => {
-                  const captured = card.captured;
-                  const isInteractive = Boolean(card.detailSource);
-                  const assetSrc = captured ? card.image : card.icon ?? card.image;
-                  const assetAlt = captured ? card.name : `Icône ${card.name}`;
-                  const shouldDesaturate = !captured && !card.icon;
-                  return (
-                    <button
-                      key={card.id}
-                      type="button"
-                      onClick={() => card.detailSource && handleAnimalClick(card.detailSource)}
-                      disabled={!isInteractive}
-                      className={`w-full flex overflow-hidden bg-white/80 border border-white/60 rounded-3xl shadow-sm text-left h-32 sm:h-40 transition-all duration-200 ${
-                        isInteractive ? 'hover:bg-white/95 hover:shadow-md hover:scale-105 active:scale-95' : 'opacity-90 cursor-default'
-                      }`}
-                    >
-                      {/* Image - Left side with 100% height */}
-                      <div className={`relative w-32 sm:w-40 flex-shrink-0 ${captured ? 'bg-white' : 'bg-gray-100'}`}>
-                        <Image
-                          src={assetSrc}
-                          alt={assetAlt}
-                          fill
+            {canDisplayGallery ? (
+              <div className="w-full rounded-lg p-3 sm:p-4 md:p-6">
+                <div className="space-y-3 sm:space-y-4 md:space-y-5">
+                  {displayCards.map((card) => {
+                    const captured = card.captured;
+                    const isInteractive = Boolean(card.detailSource);
+                    const assetSrc = captured ? card.image : card.icon ?? card.image;
+                    const assetAlt = captured ? card.name : `Icône ${card.name}`;
+                    const shouldDesaturate = !captured && !card.icon;
+                    return (
+                      <button
+                        key={card.id}
+                        type="button"
+                        onClick={() => card.detailSource && handleAnimalClick(card.detailSource)}
+                        disabled={!isInteractive}
+                        className={`w-full flex overflow-hidden bg-white/80 border border-white/60 rounded-3xl shadow-sm text-left h-32 sm:h-40 transition-all duration-200 ${
+                          isInteractive ? 'hover:bg-white/95 hover:shadow-md hover:scale-105 active:scale-95' : 'opacity-90 cursor-default'
+                        }`}
+                      >
+                        {/* Image - Left side with 100% height */}
+                        <div className={`relative w-32 sm:w-40 flex-shrink-0 ${captured ? 'bg-white' : 'bg-gray-100'}`}>
+                          <Image
+                            src={assetSrc}
+                            alt={assetAlt}
+                            fill
                             className={`object-cover transition-all ${shouldDesaturate ? 'grayscale opacity-70' : ''}`}
-                          sizes="(max-width: 640px) 128px, 160px"
-                        />
-                      </div>
-
-                      {/* Info - Right side */}
-                      <div className="flex-1 flex flex-col gap-2 sm:gap-3 justify-center p-4 sm:p-5">
-                        <div>
-                          <h3 className="text-base sm:text-lg md:text-xl font-bold text-[#1f2a24] line-clamp-1">
-                            {card.name}
-                          </h3>
+                            sizes="(max-width: 640px) 128px, 160px"
+                          />
                         </div>
 
-                        {/* Capture Status */}
-                        <div className="flex gap-2 flex-wrap">
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold ${
-                            captured ? 'bg-[#e1f6d9] text-[#1d6432]' : 'bg-[#fff1d9] text-[#8a4b12]'
-                          }`}>
-                            <span className={`w-2 h-2 rounded-full ${captured ? 'bg-[#1d6432]' : 'bg-[#8a4b12]'}`} />
-                            {captured ? 'Capturé' : 'Non capturé'}
-                          </span>
+                        {/* Info - Right side */}
+                        <div className="flex-1 flex flex-col gap-2 sm:gap-3 justify-center p-4 sm:p-5">
+                          <div>
+                            <h3 className="text-base sm:text-lg md:text-xl font-bold text-[#1f2a24] line-clamp-1">
+                              {card.name}
+                            </h3>
+                          </div>
+
+                          {/* Capture Status */}
+                          <div className="flex gap-2 flex-wrap">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold ${
+                              captured ? 'bg-[#e1f6d9] text-[#1d6432]' : 'bg-[#fff1d9] text-[#8a4b12]'
+                            }`}>
+                              <span className={`w-2 h-2 rounded-full ${captured ? 'bg-[#1d6432]' : 'bg-[#8a4b12]'}`} />
+                              {captured ? 'Capturé' : 'Non capturé'}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-lg border border-white/60 bg-white/80 p-6 text-center text-sm text-[#1f2a24]">
+                Connecte-toi pour afficher les animaux disponibles et suivre ta progression.
+              </div>
+            )}
 
             {selectedAnimal && (
               <Dialog open={!!selectedAnimal} onOpenChange={() => setSelectedAnimal(null)}>
@@ -677,8 +712,12 @@ export function ZoodexPanel({
 
                     <div className="space-y-3">
                       <div>
-                        <h2 className="text-2xl sm:text-3xl font-bold">{selectedAnimal.name}</h2>
-                        <p className="text-sm text-gray-600">{selectedAnimal.species}</p>
+                        <DialogTitle className="text-2xl sm:text-3xl font-bold">
+                          {selectedAnimal.name}
+                        </DialogTitle>
+                        <DialogDescription className="text-sm text-gray-600">
+                          {selectedAnimal.species}
+                        </DialogDescription>
                         <p className="text-xs text-gray-500 mt-1">{selectedAnimal.zoneName}</p>
                       </div>
 
@@ -701,7 +740,7 @@ export function ZoodexPanel({
                       )}
 
                       {/* Bouton Quiz pour l'ours polaire */}
-                      {isPolarBear && isCaptured && !showQuiz && (
+                      {isQuizAnimal && !showQuiz && (
                         <button
                           onClick={() => setShowQuiz(true)}
                           className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-all duration-200 flex items-center justify-center gap-2"
@@ -712,7 +751,7 @@ export function ZoodexPanel({
                       )}
 
                       {/* Section Quiz */}
-                      {isPolarBear && showQuiz && (
+                      {isQuizAnimal && showQuiz && (
                         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-xl border-2 border-blue-200 shadow-lg">
                           {!quizCompleted ? (
                             <>
@@ -720,30 +759,30 @@ export function ZoodexPanel({
                               <div className="mb-4">
                                 <div className="flex justify-between items-center mb-2">
                                   <span className="text-xs font-semibold text-blue-700">
-                                    Question {currentQuestion + 1}/{POLAR_BEAR_QUIZ.length}
+                                    Question {currentQuestion + 1}/{ANIMAL_QUIZ.length}
                                   </span>
                                   <span className="text-xs font-semibold text-blue-700">
-                                    Score: {quizScore}/{POLAR_BEAR_QUIZ.length}
+                                    Score: {quizScore}/{ANIMAL_QUIZ.length}
                                   </span>
                                 </div>
                                 <div className="w-full bg-blue-200 rounded-full h-2">
                                   <div
                                     className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                    style={{ width: `${((currentQuestion + 1) / POLAR_BEAR_QUIZ.length) * 100}%` }}
+                                    style={{ width: `${((currentQuestion + 1) / ANIMAL_QUIZ.length) * 100}%` }}
                                   />
                                 </div>
                               </div>
 
                               {/* Question */}
                               <h3 className="font-bold text-base sm:text-lg text-gray-800 mb-4">
-                                {POLAR_BEAR_QUIZ[currentQuestion].question}
+                                {ANIMAL_QUIZ[currentQuestion].question}
                               </h3>
 
                               {/* Options */}
                               <div className="space-y-2 mb-4">
-                                {POLAR_BEAR_QUIZ[currentQuestion].options.map((option, index) => {
+                                {ANIMAL_QUIZ[currentQuestion].options.map((option, index) => {
                                   const isSelected = selectedAnswer === index;
-                                  const isCorrect = index === POLAR_BEAR_QUIZ[currentQuestion].correctAnswer;
+                                  const isCorrect = index === ANIMAL_QUIZ[currentQuestion].correctAnswer;
                                   const showResult = showExplanation;
 
                                   return (
@@ -776,7 +815,7 @@ export function ZoodexPanel({
                                 <div className="bg-white p-3 rounded-lg border border-blue-200 mb-4">
                                   <p className="text-sm text-gray-700">
                                     <span className="font-semibold">💡 Explication : </span>
-                                    {POLAR_BEAR_QUIZ[currentQuestion].explanation}
+                                    {ANIMAL_QUIZ[currentQuestion].explanation}
                                   </p>
                                 </div>
                               )}
@@ -800,7 +839,7 @@ export function ZoodexPanel({
                                     onClick={handleNextQuestion}
                                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all"
                                   >
-                                    {currentQuestion < POLAR_BEAR_QUIZ.length - 1 ? 'Question suivante →' : 'Voir le résultat'}
+                                    {currentQuestion < ANIMAL_QUIZ.length - 1 ? 'Question suivante →' : 'Voir le résultat'}
                                   </button>
                                 )}
                               </div>
@@ -809,16 +848,16 @@ export function ZoodexPanel({
                             /* Quiz Completed */
                             <div className="text-center space-y-4">
                               <div className="text-6xl">
-                                {quizScore === POLAR_BEAR_QUIZ.length ? '🏆' : quizScore >= 2 ? '🎉' : '📚'}
+                                {quizScore === ANIMAL_QUIZ.length ? '🏆' : quizScore >= 2 ? '🎉' : '📚'}
                               </div>
                               <h3 className="text-2xl font-bold text-gray-800">
                                 Quiz terminé !
                               </h3>
                               <p className="text-lg font-semibold text-blue-700">
-                                Tu as obtenu {quizScore}/{POLAR_BEAR_QUIZ.length}
+                                Tu as obtenu {quizScore}/{ANIMAL_QUIZ.length}
                               </p>
                               <p className="text-sm text-gray-600">
-                                {quizScore === POLAR_BEAR_QUIZ.length
+                                {quizScore === ANIMAL_QUIZ.length
                                   ? 'Parfait ! Tu es un vrai expert de l\'ours polaire ! 🐻‍❄️'
                                   : quizScore >= 2
                                   ? 'Bravo ! Tu connais bien les ours polaires !'

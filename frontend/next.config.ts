@@ -22,6 +22,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'placehold.co',
       },
+      {
+        protocol: 'https',
+        hostname: 'www.km0.info',
+      },
     ],
   },
 };

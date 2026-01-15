@@ -88,7 +88,7 @@ export interface CrowdReportEntry {
 
 export interface CaptureIntent {
   step: CaptureStep;
-  animalId: string;
+  animalId?: string;
 }
 
 export interface CapturedPhoto {

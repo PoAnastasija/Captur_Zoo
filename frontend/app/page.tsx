@@ -12,7 +12,7 @@ import { PhotoGallery } from '@/components/ui/PhotoGallery';
 import { CrowdReportPanel } from '@/components/ui/CrowdReportPanel';
 import { ZooLogo } from '@/components/ui/ZooLogo';
 import { SettingsPanel } from '@/components/ui/SettingsPanel';
-import { AuthButton } from '@/components/ui/AuthButton';
+import { AuthButton, getAuthToken } from '@/components/ui/AuthButton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -104,19 +104,8 @@ const categoryEmoji: Record<Animal['category'], string> = {
 const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost').replace(/\/$/, '');
 const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
 const BACKEND_BASE_URL = BACKEND_PORT ? `${BACKEND_URL}:${BACKEND_PORT}` : BACKEND_URL;
-const DETECTION_API_URL = `${BACKEND_BASE_URL}/api/detect`;
-const detectionMethodLabels: Record<string, string> = {
-  yolo: 'YOLOv8',
-  detectron2: 'Detectron2',
-  classifier: 'ResNet50',
-};
-
-const formatDetectionSummary = (analysis: DetectionAnalysis) => {
-  const methodLabel = detectionMethodLabels[analysis.method ?? ''] ?? 'analyse IA';
-  const occurrences = Math.max(analysis.count ?? 0, 1);
-  const countLabel = `${occurrences} détection${occurrences > 1 ? 's' : ''}`;
-  return `${methodLabel} · ${countLabel}`;
-};
+const USER_UNLOCK_API_URL = `${BACKEND_BASE_URL}/api/user/unlock`;
+const PANEL_UNLOCK_AUTH_ERROR = 'AUTH_REQUIRED';
 
 const WS_RECONNECT_DELAY_MS = 5000;
 const POSITION_UPDATE_THROTTLE_MS = 5000;
@@ -177,21 +166,6 @@ interface PoiState {
   status: PoiStatus;
   error: string | null;
 }
-
-type DetectionAnalysis = {
-  animal_present: boolean;
-  method: string | null;
-  count: number;
-  classifier_score?: number;
-};
-
-type DetectionApiResponse = {
-  ok: boolean;
-  analysis?: DetectionAnalysis;
-  error?: string;
-  details?: string;
-};
-
 
 const ZooMap = dynamic(() => import('../components/ui/ZooMap'), {
   ssr: false,
@@ -986,105 +960,181 @@ export default function Home() {
     });
   };
 
-  const requestDetection = useCallback(async (
-    file: File,
-    metadata?: Record<string, string>
-  ): Promise<DetectionAnalysis> => {
-    const formData = new FormData();
-    formData.append('photo', file);
-    if (metadata) {
-      Object.entries(metadata).forEach(([key, value]) => {
-        formData.append(key, value);
+  const unlockAnimalWithPanel = useCallback(
+    async (file: File, metadata?: { animalId?: string }) => {
+      const token = getAuthToken();
+      if (!token) {
+        throw new Error(PANEL_UNLOCK_AUTH_ERROR);
+      }
+
+      const formData = new FormData();
+      formData.append('photo', file);
+      formData.append('step', 'enclosure');
+      if (metadata?.animalId) {
+        formData.append('animalId', metadata.animalId);
+      }
+
+      const response = await fetch(USER_UNLOCK_API_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
       });
-    }
 
-    const response = await fetch(DETECTION_API_URL, {
-      method: 'POST',
-      body: formData,
-    });
+      const payload = (await response.json().catch(() => null)) as
+        | { unlocked?: string; message?: string; error?: string }
+        | null;
 
-    const payload = (await response.json().catch(() => null)) as DetectionApiResponse | null;
-    if (!response.ok || !payload?.ok || !payload.analysis) {
-      throw new Error(payload?.error || payload?.details || 'Analyse indisponible');
-    }
+      if (!response.ok) {
+        throw new Error(payload?.message ?? payload?.error ?? 'Impossible de synchroniser le panneau.');
+      }
 
-    return payload.analysis;
-  }, []);
+      return payload?.unlocked ?? null;
+    },
+    []
+  );
 
   const handlePhotoUpload = useCallback(
     async (file: File, intent: CaptureIntent): Promise<boolean> => {
-      const targetAnimal = mapAnimals.find((animal) => animal.id === intent.animalId) ?? null;
+      const preselectedAnimal = intent.animalId
+        ? mapAnimals.find((animal) => animal.id === intent.animalId) ?? null
+        : null;
 
-      if (intent.step !== 'animal') {
-        setAnalysisState({ status: 'idle' });
-      }
+      setAnalysisState({
+        status: 'pending',
+        message:
+          intent.step === 'animal'
+            ? preselectedAnimal
+              ? `Capture de ${preselectedAnimal.name} en cours...`
+              : 'Capture de l’animal en cours...'
+            : 'Envoi du panneau pour validation...',
+        animalName: preselectedAnimal?.name ?? undefined,
+        step: intent.step,
+      });
 
       try {
-        let detectionAnalysis: DetectionAnalysis | null = null;
+        let resolvedAnimalId: string | null = null;
+        let resolvedAnimal: Animal | null = null;
 
-        if (intent.step === 'animal') {
-          setAnalysisState({
-            status: 'pending',
-            message: targetAnimal
-              ? `Analyse de ${targetAnimal.name} en cours...`
-              : 'Analyse automatique en cours...',
-            animalName: targetAnimal?.name ?? undefined,
-            step: intent.step,
-          });
-
+        if (intent.step === 'enclosure') {
+          let unlockedName: string | null = null;
           try {
-            const analysis = await requestDetection(file, {
-              animalId: intent.animalId,
-              step: intent.step,
-            });
-
-            if (!analysis.animal_present) {
+            unlockedName = await unlockAnimalWithPanel(file, intent.animalId ? { animalId: intent.animalId } : undefined);
+          } catch (unlockError) {
+            if (unlockError instanceof Error && unlockError.message === PANEL_UNLOCK_AUTH_ERROR) {
+              const detail = 'Connecte-toi pour synchroniser tes panneaux débloqués sur ton compte.';
               addNotification({
-                title: 'Animal non détecté',
-                body: 'Impossible de valider la capture. Assure-toi que l’animal occupe bien le cadre.',
+                title: 'Connexion requise',
+                body: detail,
                 type: 'alert',
               });
               setAnalysisState({
                 status: 'error',
-                message: targetAnimal ? `${targetAnimal.name} non détecté` : 'Animal non détecté',
-                detail: 'Assure-toi que l’animal est net et visible pour valider la capture.',
-                animalName: targetAnimal?.name ?? undefined,
+                message: 'Connexion requise',
+                detail,
+                animalName: undefined,
                 step: intent.step,
               });
-              setAnalysisDialogOpen(true);
               return false;
             }
-
-            detectionAnalysis = analysis;
-          } catch (analysisError) {
-            console.error('Detection request failed', analysisError);
-            const errorMessage =
-              analysisError instanceof Error ? analysisError.message : 'Analyse indisponible';
+            const unlockMessage =
+              unlockError instanceof Error
+                ? unlockError.message
+                : 'Impossible de synchroniser le panneau côté compte.';
             addNotification({
-              title: 'Analyse indisponible',
-              body: errorMessage,
+              title: 'Synchronisation panneau impossible',
+              body: unlockMessage,
               type: 'alert',
             });
             setAnalysisState({
               status: 'error',
-              message: targetAnimal
-                ? `Analyse impossible - ${targetAnimal.name}`
-                : 'Analyse impossible',
-              detail: errorMessage,
-              animalName: targetAnimal?.name ?? undefined,
+              message: 'Panneau non synchronisé',
+              detail: unlockMessage,
+              animalName: undefined,
+              step: intent.step,
+            });
+            return false;
+          }
+
+          if (!unlockedName) {
+            const message = 'Panneau non reconnu. Réessaie en cadrant mieux la signalétique.';
+            addNotification({
+              title: 'Panneau non reconnu',
+              body: message,
+              type: 'alert',
+            });
+            setAnalysisState({
+              status: 'error',
+              message: 'Panneau non reconnu',
+              detail: message,
+              animalName: undefined,
+              step: intent.step,
+            });
+            return false;
+          }
+
+          resolvedAnimal =
+            mapAnimals.find((animal) => animal.name.toLowerCase() === unlockedName.toLowerCase()) ?? null;
+          if (!resolvedAnimal) {
+            const detail = `${unlockedName} est introuvable dans la carte locale.`;
+            addNotification({
+              title: 'Animal introuvable',
+              body: detail,
+              type: 'alert',
+            });
+            setAnalysisState({
+              status: 'error',
+              message: 'Animal introuvable',
+              detail,
+              animalName: undefined,
+              step: intent.step,
+            });
+            return false;
+          }
+
+          resolvedAnimalId = resolvedAnimal.id;
+          handleCaptureEnclosure(resolvedAnimalId);
+          addNotification({
+            title: 'Panneau synchronisé',
+            body: `${resolvedAnimal.name} est prêt à être photographié.`,
+            type: 'event',
+          });
+        } else {
+          if (!intent.animalId) {
+            const detail = 'Choisis un animal avant de lancer la capture.';
+            addNotification({
+              title: 'Animal non sélectionné',
+              body: detail,
+              type: 'alert',
+            });
+            setAnalysisState({
+              status: 'error',
+              message: 'Animal non sélectionné',
+              detail,
+              animalName: undefined,
               step: intent.step,
             });
             setAnalysisDialogOpen(true);
             return false;
           }
+          resolvedAnimalId = intent.animalId;
+          resolvedAnimal = preselectedAnimal ?? mapAnimals.find((animal) => animal.id === resolvedAnimalId) ?? null;
+          handleCaptureAnimal(resolvedAnimalId);
+        }
+
+        if (!resolvedAnimalId) {
+          throw new Error('Identification animale indisponible.');
         }
 
         const dataUrl = await readFileAsDataUrl(file);
-        const filenameBase = targetAnimal ? targetAnimal.name.replace(/\s+/g, '-').toLowerCase() : 'capture';
+        const filenameBase = resolvedAnimal
+          ? resolvedAnimal.name.replace(/\s+/g, '-').toLowerCase()
+          : 'capture';
         const filename = `${filenameBase}-${intent.step}-${Date.now()}.jpg`;
         const photo: CapturedPhoto = {
           id: `photo-${Date.now()}`,
-          animalId: intent.animalId,
+          animalId: resolvedAnimalId,
           step: intent.step,
           takenAt: new Date().toISOString(),
           dataUrl,
@@ -1097,57 +1147,71 @@ export default function Home() {
           return next;
         });
 
-        downloadPhoto(dataUrl, filename);
-
-        const detectionSummary = detectionAnalysis ? formatDetectionSummary(detectionAnalysis) : null;
+        if (intent.step !== 'enclosure') {
+          downloadPhoto(dataUrl, filename);
+        }
 
         addNotification({
           title: 'Photo validée',
-          body: targetAnimal
-            ? `${targetAnimal.name} (${captureStepLabel[intent.step]}) ajouté à ton Zoodex${detectionSummary ? ` · ${detectionSummary}` : ''}.`
-            : `Nouvelle capture ajoutée à ton Zoodex${detectionSummary ? ` · ${detectionSummary}` : ''}.`,
+          body: resolvedAnimal
+            ? `${resolvedAnimal.name} (${captureStepLabel[intent.step]}) ajouté à ton Zoodex.`
+            : `Nouvelle capture (${captureStepLabel[intent.step]}) ajoutée à ton Zoodex.`,
           type: 'event',
         });
 
         if (intent.step === 'animal') {
           setAnalysisState({
             status: 'success',
-            message: targetAnimal ? `${targetAnimal.name} détecté` : 'Animal détecté',
-            detail: detectionSummary ?? undefined,
-            animalName: targetAnimal?.name ?? undefined,
+            message: resolvedAnimal ? `${resolvedAnimal.name} confirmé` : 'Animal capturé',
+            detail: undefined,
+            animalName: resolvedAnimal?.name ?? undefined,
             step: intent.step,
           });
           setAnalysisDialogOpen(true);
         } else {
-          setAnalysisState({ status: 'idle' });
+          setAnalysisState({
+            status: 'success',
+            message: resolvedAnimal ? `${resolvedAnimal.zoneName} synchronisé` : 'Panneau validé',
+            detail: undefined,
+            animalName: resolvedAnimal?.name ?? undefined,
+            step: intent.step,
+          });
         }
 
         unlockBadge('shutterbug');
         return true;
       } catch (error) {
         console.error('Photo capture error', error);
-          const errorMessage = error instanceof Error ? error.message : 'Impossible de sauvegarder la photo.';
+        const errorMessage = error instanceof Error ? error.message : 'Impossible de sauvegarder la photo.';
         addNotification({
           title: 'Erreur capture',
-            body: errorMessage,
+          body: errorMessage,
           type: 'alert',
         });
+        setAnalysisState({
+          status: 'error',
+          message: intent.step === 'enclosure' ? 'Erreur de scan' : 'Erreur de capture',
+          detail: errorMessage,
+          animalName: preselectedAnimal?.name ?? undefined,
+          step: intent.step,
+        });
         if (intent.step === 'animal') {
-          setAnalysisState({
-            status: 'error',
-              message: 'Erreur de capture',
-              detail: errorMessage,
-            animalName: targetAnimal?.name ?? undefined,
-            step: intent.step,
-          });
           setAnalysisDialogOpen(true);
-        } else {
-          setAnalysisState({ status: 'idle' });
         }
         return false;
       }
     },
-    [addNotification, downloadPhoto, mapAnimals, persistCapturedPhotos, readFileAsDataUrl, requestDetection, unlockBadge]
+    [
+      addNotification,
+      downloadPhoto,
+      handleCaptureAnimal,
+      handleCaptureEnclosure,
+      mapAnimals,
+      persistCapturedPhotos,
+      readFileAsDataUrl,
+      unlockAnimalWithPanel,
+      unlockBadge,
+    ]
   );
 
   const handleBadgeToggle = useCallback((badgeId: string, shouldUnlock: boolean) => {
@@ -1531,8 +1595,6 @@ export default function Home() {
           setPhotoGalleryOpen(false);
           resetNavToMap();
         }}
-        onCaptureAnimal={handleCaptureAnimal}
-        onCaptureEnclosure={handleCaptureEnclosure}
         onUploadPhoto={handlePhotoUpload}
         cameraEnabled={cameraAccessEnabled}
         analysisState={analysisState}

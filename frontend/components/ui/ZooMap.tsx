@@ -294,6 +294,19 @@ export default function ZooMap({
     }
   }, [locationEnabled, requestManualLocation, userPosition]);
 
+  const handleRecenterToZoo = useCallback(() => {
+    setInitialCenter(FALLBACK_CENTER);
+    const map = mapRef.current;
+    if (map) {
+      const targetZoom = Math.max(map.getZoom(), 16);
+      map.flyTo(FALLBACK_CENTER, targetZoom, {
+        animate: true,
+        duration: 0.8,
+        easeLinearity: 0.2,
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (!isGeoSupported) {
       onGeoError?.(GEO_UNSUPPORTED_MESSAGE);
@@ -323,18 +336,6 @@ export default function ZooMap({
 
     return () => navigator.geolocation.clearWatch(watchId);
   }, [handlePositionError, handlePositionSuccess, isGeoSupported, locationEnabled]);
-
-  useEffect(() => {
-    if (!userPosition || !mapRef.current) {
-      return;
-    }
-    const map = mapRef.current;
-    // Only fly to user position on updates, not on initial load
-    if (map.getZoom() > 0) {
-      const targetZoom = Math.max(map.getZoom(), 17);
-      map.flyTo(userPosition, targetZoom, { duration: 0.8 });
-    }
-  }, [userPosition]);
 
   return (
     <div
@@ -526,14 +527,24 @@ export default function ZooMap({
         </div>
       )}
       <div className="pointer-events-none absolute right-4 z-[1000]" style={{ bottom: '210px' }}>
-        <button
-          type="button"
-          className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full border border-white/70 bg-white text-xl text-[#0d4f4a] shadow transition hover:bg-white/90"
-          onClick={handleRecenter}
-          aria-label="Recentrer la carte"
-        >
-          <span aria-hidden>📍</span>
-        </button>
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full border border-white/70 bg-white text-xl text-[#0d4f4a] shadow transition hover:bg-white/90"
+            onClick={handleRecenter}
+            aria-label="Recentrer sur ma position"
+          >
+            <span aria-hidden>📍</span>
+          </button>
+          <button
+            type="button"
+            className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full border border-white/70 bg-white text-xl text-[#0d4f4a] shadow transition hover:bg-white/90"
+            onClick={handleRecenterToZoo}
+            aria-label="Recentrer sur le zoo"
+          >
+            <span aria-hidden>🗺️</span>
+          </button>
+        </div>
       </div>
       {geoError && (
         <div
