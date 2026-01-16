@@ -39,7 +39,7 @@ user_router.post('/unlock', verify_auth, async (req, res) => {
     if (!account)
         return res.status(404).json({ msg: "Not found" });
 
-    const unlocked_animal = "Loups à crinière";
+    const unlocked_animal = "Ours polaires";
 
     await set_animal_unlocked(connection, account.id, unlocked_animal);
 
