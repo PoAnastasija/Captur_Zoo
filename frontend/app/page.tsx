@@ -1162,7 +1162,7 @@ export default function Home() {
         if (intent.step === 'animal') {
           setAnalysisState({
             status: 'success',
-            message: resolvedAnimal ? `${resolvedAnimal.name} confirmé` : 'Animal capturé',
+            message: resolvedAnimal ? `${resolvedAnimal.name} confirmé` : 'Animal débloqué',
             detail: undefined,
             animalName: resolvedAnimal?.name ?? undefined,
             step: intent.step,

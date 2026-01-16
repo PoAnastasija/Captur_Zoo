@@ -121,7 +121,7 @@ export function PokedexGallery({ animals, capturedAnimals, capturedEnclosures }:
                 }`}>
                   <p className="text-xs sm:text-sm font-bold text-gray-700">Statut</p>
                   <p className={`text-sm sm:text-lg font-bold ${isCaptured ? 'text-green-600' : 'text-gray-500'}`}>
-                    {isCaptured ? '✓ Capturé' : '🔒 Non capturé'}
+                    {isCaptured ? '✓ Débloqué' : '🔒 À découvrir'}
                   </p>
                 </div>
               </div>

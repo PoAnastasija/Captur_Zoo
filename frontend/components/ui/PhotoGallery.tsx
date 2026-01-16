@@ -188,7 +188,7 @@ export function PhotoGallery({
                     <Circle className="h-4 w-4 text-[#7fbf8a]" />
                   </div>
                   <p className="mt-3 text-sm text-[#1f3b2a]">
-                    Prends la meilleure photo possible : le backend identifie automatiquement l’habitant rencontré.
+                    Prends la meilleure photo possible : l'IA identifie automatiquement si l’habitant rencontré est le bon.
                   </p>
                   <div className="mt-4 rounded-2xl bg-white/95 px-3 py-2 text-sm font-semibold text-[#103622]">
                     {!cameraEnabled

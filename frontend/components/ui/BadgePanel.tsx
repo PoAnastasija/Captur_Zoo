@@ -245,7 +245,7 @@
 //                             captured ? 'bg-[#e1f6d9] text-[#1d6432]' : 'bg-[#fff1d9] text-[#8a4b12]'
 //                           }`}>
 //                             <span className={`w-2 h-2 rounded-full ${captured ? 'bg-[#1d6432]' : 'bg-[#8a4b12]'}`} />
-//                             {captured ? 'Capturé' : 'Non capturé'}
+//                             {captured ? 'Débloqué' : 'À découvrir'}
 //                           </span>
 //                         </div>
 //                       </div>
@@ -681,7 +681,7 @@ export function ZoodexPanel({
                               captured ? 'bg-[#e1f6d9] text-[#1d6432]' : 'bg-[#fff1d9] text-[#8a4b12]'
                             }`}>
                               <span className={`w-2 h-2 rounded-full ${captured ? 'bg-[#1d6432]' : 'bg-[#8a4b12]'}`} />
-                              {captured ? 'Capturé' : 'Non capturé'}
+                              {captured ? 'Débloqué' : 'À découvrir'}
                             </span>
                           </div>
                         </div>
