@@ -46,7 +46,7 @@ function initSocket(server) {
 
 function calculatePoiAffluence() {
     return pois.map(poi => {
-        let affluence = 0;
+        let affluence = 1;
         userPositions.forEach((pos) => {
             const distance = getDistance(poi.latitude, poi.longitude, pos.latitude, pos.longitude);
             if (distance <= 30) {
