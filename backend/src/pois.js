@@ -1,13 +1,5 @@
 const POIs = [
     {
-        "name": "KMO",
-        "longitude": 7.328088,
-        "latitude": 47.7384087,
-        "image": "https://www.km0.info/wp-inside/themes/km0.info/assets/images/logo.png",
-        "icon": "https://www.km0.info/wp-inside/themes/km0.info/assets/images/logo.png",
-        "type": "animaux"
-    },
-    {
         "name": "Cercopithèques",
         "longitude": 7.35098874264392,
         "latitude": 47.7359161766421,
